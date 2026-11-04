@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Safe Place</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>🏡 Safe Place</h1>
+      <div id="status" class="status status--off">Not connected</div>
+    </header>
+
+    <!-- LOBBY -->
+    <section id="lobby" class="screen">
+      <div class="name-row">
+        <label for="name-input">Your name</label>
+        <input id="name-input" type="text" maxlength="16" placeholder="Player" autocomplete="off">
+      </div>
+      <div class="cards">
+        <div class="card">
+          <h2>Create Room</h2>
+          <p>You become the host and choose the games.</p>
+          <button id="btn-create" class="btn btn--primary">Create Room</button>
+        </div>
+
+        <div class="card">
+          <h2>Join Room</h2>
+          <p>Enter the code the host sent you.</p>
+          <input id="join-input" type="text" placeholder="Paste room code" autocomplete="off" spellcheck="false">
+          <button id="btn-join" class="btn btn--primary">Join Room</button>
+        </div>
+      </div>
+      <p id="lobby-msg" class="muted center"></p>
+    </section>
+
+    <!-- GAME HUB -->
+    <section id="hub" class="screen hidden">
+      <div class="hub-layout">
+        <aside id="sidebar" class="sidebar">
+          <div class="side-head">
+            <button id="btn-side-toggle" class="btn btn--ghost side-toggle" title="Room info &amp; players">☰ <span id="side-count">0</span> 👥</button>
+            <button id="btn-leave" class="btn btn--danger">Leave Room</button>
+          </div>
+          <div class="side-body">
+            <div class="side-block">
+              <label>Room code</label>
+              <div class="code-row">
+                <code id="room-code">...</code>
+                <button id="btn-copy" class="btn btn--ghost">Copy</button>
+              </div>
+            </div>
+            <div class="side-block">
+              <label>Players (<span id="player-count">0</span>)</label>
+              <ul id="player-list" class="player-list"></ul>
+            </div>
+          </div>
+        </aside>
+
+        <div class="hub-main">
+          <div id="game-menu" class="game-menu"></div>
+          <div id="game-container" class="game-container"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Load order matters (plain scripts, so it works from file:// too) -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="js/network.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/hub.js"></script>
+  <script src="js/games/tictactoe.js"></script>
+  <script src="js/games/rps.js"></script>
+  <script src="js/games/numberrace.js"></script>
+  <!-- Add new games here: <script src="js/games/pong.js"></script> -->
+  <script src="js/main.js"></script>
+</body>
+</html>
