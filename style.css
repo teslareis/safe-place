@@ -135,3 +135,8 @@ body.in-game .game-container { padding: 10px; min-height: 0; justify-content: fl
 .mic-btn--off { color: var(--muted); }
 .mic-btn--blocked, .mic-btn--na { color: #ffc857; border-color: #ffc85766; }
 body.in-game .mic-btn { padding: 6px 12px; font-size: .85rem; }
+
+/* ===== Host: kick button in the player list ===== */
+.kick-btn { margin-left: auto; cursor: pointer; background: transparent; color: var(--danger); border: 1px solid #ff5c5c55; border-radius: 6px; padding: 2px 8px; font-size: .72rem; font-weight: 600; }
+.kick-btn:hover { background: #ff5c5c22; }
+.player-list .tag + .kick-btn { margin-left: 8px; }

@@ -120,6 +120,34 @@ class Network {
     if (player) this._emit('peerleave', player);
   }
 
+  /**
+   * Host only: remove a player from the room.
+   * Tells them ({ channel:'_net', type:'kick' }), removes them from the roster and
+   * voice immediately, then force-closes their data connection.
+   */
+  kick(peerId) {
+    if (!this.isHost || peerId === this.myId) return;       // never the host itself
+    const conn = this.conns.get(peerId);
+    if (!conn) return;
+
+    try { conn.send({ channel: '_net', type: 'kick' }); } catch (e) {}
+
+    // Remove from the active list first, so the later 'close' event is ignored by _hostDrop
+    // and anything they still send is dropped as coming from a stranger.
+    this.conns.delete(peerId);
+    const player = this.players.find(p => p.id === peerId);
+    this.players = this.players.filter(p => p.id !== peerId);
+    this._dropVoice(peerId);                                // media call + <audio> element
+    this._broadcastRoster();                                // everyone else sees the new list
+    this._emit('players', this.players);
+    this._syncCalls();
+    if (player) this._emit('peerleave', player);
+
+    // Force-close the data connection. Tiny delay so the 'kick' message is flushed
+    // before the channel goes down (the client also closes itself when it receives it).
+    setTimeout(() => { try { conn.close(); } catch (e) {} }, 150);
+  }
+
   _broadcastRoster() {
     const msg = { channel: '_net', type: 'roster', payload: this.players };
     this.conns.forEach(c => c.open && c.send(msg));
@@ -162,6 +190,9 @@ class Network {
       } else if (msg.type === 'full') {
         this._left = true; // suppress 'closed'
         this._emit('error', { type: 'room-full' });
+      } else if (msg.type === 'kick') {
+        this._left = true; // we are being removed: suppress the generic 'closed' event
+        this._emit('kicked');
       }
       return;
     }

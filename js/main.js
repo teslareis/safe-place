@@ -87,6 +87,15 @@
 
   net.onEvent('closed', () => resetLobby('The host closed the room.'));
 
+  // Host removed us: tell the player, then reset the UI to the main menu
+  net.onEvent('kicked', () => {
+    window.alert('Oda sahibi tarafından odadan atıldınız. (Kicked by host)');
+    leaveRoom();
+  });
+
+  /** Disconnect from the PeerJS session and return to the Create/Join screen. */
+  function leaveRoom(msg) { resetLobby(msg); }
+
   net.onEvent('error', err => {
     const msgs = {
       'peer-unavailable': 'Room not found. Check the code.',
@@ -112,6 +121,15 @@
         tag.className = 'tag';
         tag.textContent = '👑 host';
         li.append(tag);
+      }
+      // Kick: only the host sees it, and never next to the host's own entry
+      if (net.isHost && !p.isHost) {
+        const kick = document.createElement('button');
+        kick.className = 'kick-btn';
+        kick.textContent = '❌ (Kick)';
+        kick.title = 'Remove ' + p.name + ' from the room';
+        kick.onclick = () => net.kick(p.id);
+        li.append(kick);
       }
       ul.appendChild(li);
     });
@@ -155,7 +173,7 @@
     setTimeout(() => ($('btn-copy').textContent = 'Copy'), 1200);
   };
 
-  $('btn-leave').onclick = () => resetLobby('You left the room.');
+  $('btn-leave').onclick = () => leaveRoom('You left the room.');
 
   // In-game the sidebar is a slim bar; ☰ opens room code + players as a dropdown
   $('btn-side-toggle').onclick = () => $('sidebar').classList.toggle('open');
