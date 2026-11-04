@@ -25,6 +25,12 @@ class Network {
   constructor() {
     this.handlers = {};
     this.events = {};
+    // voice chat state (survives _reset so a mic stream can be set before/after joining)
+    this.localStream = null;
+    this.calls = new Map();     // remote peerId -> MediaConnection
+    this.audios = new Map();    // remote peerId -> hidden <audio> element
+    this._knownIds = new Set(); // roster ids seen last time (to detect who left)
+    this._silent = null;
     this._reset();
   }
 
@@ -56,6 +62,7 @@ class Network {
       this._emit('players', this.players);
     });
     this.peer.on('connection', conn => this._hostAccept(conn));
+    this.peer.on('call', call => this._onIncomingCall(call));
     this.peer.on('error', err => this._emit('error', err));
   }
 
@@ -81,6 +88,7 @@ class Network {
         this.players.push(player);
         this._broadcastRoster();
         this._emit('players', this.players);
+        this._syncCalls();
         this._emit('peerjoin', player);
       }
       return;
@@ -108,6 +116,7 @@ class Network {
     this.players = this.players.filter(p => p.id !== id);
     this._broadcastRoster();
     this._emit('players', this.players);
+    this._syncCalls();                      // destroys that player's call + <audio>
     if (player) this._emit('peerleave', player);
   }
 
@@ -138,6 +147,7 @@ class Network {
       conn.on('close', () => this._clientLost());
       conn.on('error', () => this._clientLost());
     });
+    this.peer.on('call', call => this._onIncomingCall(call));
     this.peer.on('error', err => this._emit('error', err));
   }
 
@@ -148,6 +158,7 @@ class Network {
         this.players = msg.payload;
         if (!this._joined) { this._joined = true; this._emit('joined'); }
         this._emit('players', this.players);
+        this._syncCalls();
       } else if (msg.type === 'full') {
         this._left = true; // suppress 'closed'
         this._emit('error', { type: 'room-full' });
@@ -187,9 +198,111 @@ class Network {
     (this.handlers[msg.channel] || []).forEach(fn => fn(msg.type, msg.payload, msg.from));
   }
 
+  // ================= Voice chat (direct P2P media calls) =================
+  // Data uses the star topology, but voice is a full mesh: every pair of players
+  // gets ONE direct MediaConnection. To avoid both sides calling each other at
+  // the same time, only the player with the smaller peer id initiates the call;
+  // the other side answers (peer.on('call')).
+
+  /** Give Network the microphone stream (or null to stop transmitting). */
+  setLocalStream(stream) {
+    this.localStream = stream || null;
+    // Calls that already exist (opened before the mic was ready) get the real track swapped in
+    const track = this.localStream && this.localStream.getAudioTracks()[0];
+    this.calls.forEach(call => this._swapOutgoingTrack(call, track || this._silentTrack()));
+    this._syncCalls();
+  }
+
+  /** Stream to hand to peer.call()/answer(): the mic, or silence (so we can still HEAR others). */
+  _currentStream() { return this.localStream || this._silentStream(); }
+
+  _silentStream() {
+    if (!this._silent) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      this._silentCtx = new AC();
+      this._silent = this._silentCtx.createMediaStreamDestination().stream; // silent audio track
+    }
+    return this._silent;
+  }
+
+  _silentTrack() { return this._silentStream().getAudioTracks()[0]; }
+
+  _swapOutgoingTrack(call, track) {
+    const pc = call.peerConnection;
+    if (!pc || !track) return;
+    const t = pc.getTransceivers().find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'audio');
+    if (t && t.sender) t.sender.replaceTrack(track).catch(() => {});
+  }
+
+  /** Start missing calls, and tear down voice for players that left the roster. */
+  _syncCalls() {
+    if (!this.peer || !this.myId) return;
+    const now = new Set(this.players.map(p => p.id).filter(id => id !== this.myId));
+
+    // Players who were in the roster before and are gone now -> destroy their call + <audio>
+    this._knownIds.forEach(id => { if (!now.has(id)) this._dropVoice(id); });
+    this._knownIds = now;
+
+    now.forEach(id => {
+      if (this.calls.has(id) || !(this.myId < id)) return;   // exists, or the other side initiates
+      try {
+        const call = this.peer.call(id, this._currentStream());
+        if (call) this._wireCall(call);
+      } catch (e) { console.warn('Voice call failed:', e); }
+    });
+  }
+
+  _onIncomingCall(call) {
+    call.answer(this._currentStream());      // answers even without a mic (receive-only)
+    this._wireCall(call);
+  }
+
+  _wireCall(call) {
+    const id = call.peer;
+    if (this.calls.has(id) && this.calls.get(id) !== call) this._dropVoice(id); // replace stale call
+    this.calls.set(id, call);
+    call.on('stream', remote => this._attachAudio(id, remote));
+    call.on('close', () => { if (this.calls.get(id) === call) this._dropVoice(id); });
+    call.on('error', () => { if (this.calls.get(id) === call) this._dropVoice(id); });
+  }
+
+  /** One hidden <audio autoplay> per remote player, keyed by their peer id. */
+  _attachAudio(id, stream) {
+    let el = this.audios.get(id);
+    if (el && el.srcObject === stream) return;
+    if (!el) {
+      el = document.createElement('audio');
+      el.autoplay = true;
+      el.playsInline = true;
+      el.hidden = true;
+      el.dataset.peer = id;
+      document.body.appendChild(el);
+      this.audios.set(id, el);
+    }
+    el.srcObject = stream;
+    const p = el.play();
+    if (p && p.catch) p.catch(() => {});     // autoplay may need a user gesture; the next click resumes it
+  }
+
+  /** Close the call and remove that player's <audio> element (no ghost elements). */
+  _dropVoice(id) {
+    const call = this.calls.get(id);
+    this.calls.delete(id);
+    if (call) { try { call.close(); } catch (e) {} }
+    const el = this.audios.get(id);
+    if (el) { el.pause(); el.srcObject = null; el.remove(); }
+    this.audios.delete(id);
+  }
+
+  _dropAllVoice() {
+    [...new Set([...this.calls.keys(), ...this.audios.keys()])].forEach(id => this._dropVoice(id));
+    this._knownIds = new Set();
+  }
+
   // ---- teardown ----
   leave() {
     this._left = true;
+    this._dropAllVoice();
     this.conns.forEach(c => { try { c.close(); } catch (e) {} });
     if (this.hostConn) { try { this.hostConn.close(); } catch (e) {} }
     if (this.peer) { try { this.peer.destroy(); } catch (e) {} }

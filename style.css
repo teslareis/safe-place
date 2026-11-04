@@ -127,3 +127,11 @@ body.in-game .sidebar.open .side-body {
 body.in-game .game-menu { margin-bottom: 0; min-height: 0; }
 body.in-game .game-menu .btn { padding: 6px 12px; font-size: .85rem; }
 body.in-game .game-container { padding: 10px; min-height: 0; justify-content: flex-start; background: transparent; border: none; }
+
+/* ===== Voice chat mic button ===== */
+.side-actions { display: flex; gap: 8px; align-items: center; }
+.mic-btn { min-width: 112px; }
+.mic-btn--on { color: var(--ok); border-color: #3ddc9766; background: #3ddc971a; }
+.mic-btn--off { color: var(--muted); }
+.mic-btn--blocked, .mic-btn--na { color: #ffc857; border-color: #ffc85766; }
+body.in-game .mic-btn { padding: 6px 12px; font-size: .85rem; }

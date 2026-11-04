@@ -12,10 +12,63 @@
 
   GameHub.init(net, $('game-container'), $('game-menu'));
 
+  // ---------- Voice chat: microphone ----------
+  // The stream is handed to Network, which opens direct P2P media calls.
+  // A denied/missing mic never breaks the game: players just don't transmit.
+  const micBtn = $('btn-mic');
+  let localStream = null;
+  let inRoom = false;
+  let micPending = false;
+
+  function renderMic(state) {
+    const track = localStream && localStream.getAudioTracks()[0];
+    state = state || (track ? (track.enabled ? 'on' : 'off') : 'off');
+    micBtn.className = 'btn mic-btn mic-btn--' + state;
+    micBtn.textContent = { on: 'Mic: On', off: 'Mic: Off', blocked: 'Mic: Off (blocked)', na: 'Mic: N/A' }[state];
+    micBtn.title = state === 'blocked' ? 'Microphone access was denied. Click to try again.'
+      : state === 'na' ? 'Microphone is not available in this browser/context.' : 'Mute / unmute your microphone';
+  }
+
+  async function initMic() {
+    if (localStream || micPending) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return renderMic('na');
+    micPending = true;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      if (!inRoom) { stream.getTracks().forEach(t => t.stop()); return; } // left while the prompt was open
+      localStream = stream;
+      localStream.getAudioTracks()[0].enabled = true;
+      net.setLocalStream(localStream);   // starts / upgrades the voice calls
+      renderMic();
+    } catch (err) {
+      console.warn('Microphone unavailable:', err.name || err);
+      renderMic('blocked');              // game keeps working without voice output from us
+    } finally {
+      micPending = false;
+    }
+  }
+
+  function stopMic() {
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+    net.setLocalStream(null);
+    renderMic('off');
+  }
+
+  micBtn.onclick = () => {
+    const track = localStream && localStream.getAudioTracks()[0];
+    if (!track) return initMic();        // not granted yet / denied -> ask again
+    track.enabled = !track.enabled;      // mute without dropping the WebRTC connection
+    renderMic();
+  };
+
   function enterHub(code) {
     $('room-code').textContent = code;
     showScreen('hub');
     GameHub.enter();
+    inRoom = true;
+    renderMic('off');
+    initMic();
   }
 
   // Host: room is live -> go straight to the hub and wait for players
@@ -66,6 +119,8 @@
 
   function resetLobby(msg) {
     GameHub.stop();
+    inRoom = false;
+    stopMic();
     net.leave();
     showScreen('lobby');
     setStatus('Not connected', 'off');
