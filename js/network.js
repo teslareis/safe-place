@@ -180,7 +180,13 @@ class Network {
   }
 
   _clientOnData(msg) {
-    if (!msg || !msg.channel) return;
+    if (!msg) return;
+    if (msg.type === 'kick') {
+      this._left = true; // we are being removed: suppress the generic 'closed' event
+      this._emit('kicked');
+      return;
+    }
+    if (!msg.channel) return;
     if (msg.channel === '_net') {
       if (msg.type === 'roster') {
         this.players = msg.payload;
@@ -190,9 +196,6 @@ class Network {
       } else if (msg.type === 'full') {
         this._left = true; // suppress 'closed'
         this._emit('error', { type: 'room-full' });
-      } else if (msg.type === 'kick') {
-        this._left = true; // we are being removed: suppress the generic 'closed' event
-        this._emit('kicked');
       }
       return;
     }

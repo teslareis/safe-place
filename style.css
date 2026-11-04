@@ -89,19 +89,6 @@ input[type=text]:focus { outline: 2px solid var(--accent-2); border-color: trans
 .ttt-cell.win { background: #3ddc9733; border-color: var(--ok); }
 .ttt-cell:not(:disabled):hover { filter: brightness(1.25); }
 
-/* Rock-Paper-Scissors */
-.rps { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
-.rps-choices { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
-.rps-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100px; padding: 14px 8px; font-size: .9rem; text-transform: capitalize; background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 12px; cursor: pointer; }
-.rps-btn span { font-size: 2.2rem; }
-.rps-btn:not(:disabled):hover { filter: brightness(1.25); border-color: var(--accent-2); }
-.rps-btn:disabled { cursor: not-allowed; opacity: .55; }
-.rps-btn.picked { opacity: 1; border-color: var(--accent); background: #ff5c8a22; }
-.rps-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; width: min(340px, 100%); }
-.rps-results li { padding: 8px 12px; background: var(--panel-2); border-radius: 8px; border: 1px solid transparent; }
-.rps-results li.winner { border-color: var(--ok); background: #3ddc9722; }
-.rps-outcome { font-size: 1.15rem; font-weight: 700; margin: 0; }
-
 /* ===== Sidebar: head + body ===== */
 .side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .side-body { display: flex; flex-direction: column; gap: 18px; }
