@@ -10,6 +10,7 @@
   --ok: #3ddc97;
   --danger: #ff5c5c;
   --radius: 14px;
+  --header-height: 118px;
 }
 
 * { box-sizing: border-box; }
@@ -92,18 +93,21 @@ input[type=text]:focus { outline: 2px solid var(--accent-2); border-color: trans
 /* ===== Sidebar: head + body ===== */
 .side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .side-body { display: flex; flex-direction: column; gap: 18px; }
-.side-toggle { display: none; }               /* hamburger only exists in-game */
+.side-toggle { display: none; }
 
-/* ===== In-game: sidebar collapses to a slim top bar, games get the whole screen ===== */
-body.in-game .app { max-width: none; width: 100%; padding: 8px 12px 16px; }
-body.in-game header { margin-bottom: 8px; }
+/* ===== In-game: zero-scroll viewport lock (Task 1 & Task 2) ===== */
+body.in-game { height: 100vh; height: 100dvh; overflow: hidden; }
+body.in-game .app { max-width: none; width: 100%; height: 100vh; height: 100dvh; padding: 6px 12px 8px; display: flex; flex-direction: column; overflow: hidden; }
+body.in-game header { margin-bottom: 4px; flex-shrink: 0; }
 body.in-game header h1 { font-size: 1rem; }
-body.in-game .hub-layout { grid-template-columns: 1fr; gap: 8px; }
+body.in-game #hub { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+body.in-game .hub-layout { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; width: 100%; overflow: hidden; }
+body.in-game .hub-main { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; width: 100%; overflow: hidden; }
 
-body.in-game .sidebar { position: relative; padding: 6px 10px; border-radius: 10px; gap: 0; z-index: 20; }
+body.in-game .sidebar { position: relative; padding: 5px 10px; border-radius: 10px; gap: 0; z-index: 20; flex-shrink: 0; width: 100%; }
 body.in-game .side-head { width: 100%; }
-body.in-game .side-toggle { display: inline-block; padding: 6px 12px; font-size: .9rem; }
-body.in-game .sidebar .btn--danger { padding: 6px 12px; font-size: .85rem; }
+body.in-game .side-toggle { display: inline-block; padding: 5px 10px; font-size: .85rem; }
+body.in-game .sidebar .btn--danger { padding: 5px 10px; font-size: .82rem; }
 body.in-game .side-body { display: none; }
 body.in-game .sidebar.open .side-body {
   display: flex; position: absolute; top: calc(100% + 6px); left: 0;
@@ -111,9 +115,19 @@ body.in-game .sidebar.open .side-body {
   border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 12px 40px #000a;
 }
 
-body.in-game .game-menu { margin-bottom: 0; min-height: 0; }
-body.in-game .game-menu .btn { padding: 6px 12px; font-size: .85rem; }
-body.in-game .game-container { padding: 10px; min-height: 0; justify-content: flex-start; background: transparent; border: none; }
+body.in-game .game-menu { margin-bottom: 4px; min-height: 0; flex-shrink: 0; }
+body.in-game .game-menu .btn { padding: 5px 10px; font-size: .82rem; }
+body.in-game .game-container {
+  flex: 1 1 0;
+  height: calc(100vh - var(--header-height));
+  height: calc(100dvh - var(--header-height));
+  min-height: 0;
+  padding: 2px;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  overflow: hidden;
+}
 
 /* ===== Voice chat mic button ===== */
 .side-actions { display: flex; gap: 8px; align-items: center; }
@@ -121,9 +135,896 @@ body.in-game .game-container { padding: 10px; min-height: 0; justify-content: fl
 .mic-btn--on { color: var(--ok); border-color: #3ddc9766; background: #3ddc971a; }
 .mic-btn--off { color: var(--muted); }
 .mic-btn--blocked, .mic-btn--na { color: #ffc857; border-color: #ffc85766; }
-body.in-game .mic-btn { padding: 6px 12px; font-size: .85rem; }
+body.in-game .mic-btn { padding: 5px 10px; font-size: .82rem; }
 
 /* ===== Host: kick button in the player list ===== */
 .kick-btn { margin-left: auto; cursor: pointer; background: transparent; color: var(--danger); border: 1px solid #ff5c5c55; border-radius: 6px; padding: 2px 8px; font-size: .72rem; font-weight: 600; }
 .kick-btn:hover { background: #ff5c5c22; }
 .player-list .tag + .kick-btn { margin-left: 8px; }
+
+/* =====================================================================
+   TUMBLE MATCH — Strict Image Boundaries, Character Select & Tall Towers
+   ===================================================================== */
+.tm {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background:
+    radial-gradient(circle at 25% 20%, rgba(47, 155, 255, 0.14) 0%, transparent 45%),
+    radial-gradient(circle at 75% 20%, rgba(255, 61, 127, 0.14) 0%, transparent 45%),
+    radial-gradient(circle at 50% 20%, #131c33 0%, #0b1020 70%, #060913 100%);
+  border-radius: 14px;
+  color: #e8ecf7;
+  user-select: none;
+  overflow: hidden;
+  box-sizing: border-box;
+  transition: background 0.4s ease;
+}
+
+/* CRITICAL DEFENSIVE GUARD: Prevent any image inside .tm from overflowing its box */
+.tm img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Dramatic Screen Darkening Vignette during Slow-Motion Final Shot */
+.tm::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(2, 4, 12, 0.6) 0%, rgba(0, 0, 0, 0.9) 100%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+  transition: opacity 0.35s ease;
+}
+.tm.tm--matchpoint::before {
+  opacity: 1;
+}
+
+/* Split-Screen Arena hosting two Tall Narrow 5-Column Towers */
+.tm-arena {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  max-width: 980px;
+  display: flex;
+  justify-content: space-evenly;
+  align-items: stretch;
+  gap: clamp(16px, 4vw, 56px);
+  z-index: 6;
+  overflow: hidden;
+}
+
+/* Tall, Narrow 5-Column Tower Container per Player */
+.tm-sec {
+  position: relative;
+  flex: 0 1 clamp(250px, 38vh, 360px);
+  width: 100%;
+  max-width: clamp(250px, 38vh, 360px);
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: linear-gradient(180deg, #11192e 0%, #0b1120 100%);
+  border: 2px solid #25304b;
+  border-radius: 14px;
+  padding: clamp(5px, 0.8vh, 9px) clamp(7px, 0.9vw, 11px);
+  box-sizing: border-box;
+  overflow: hidden;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease, transform 0.25s ease, filter 0.3s ease;
+}
+
+.tm-sec--1 { border-color: #2aa7c9bb; }
+.tm-sec--2 { border-color: #ff3d7fbb; }
+.tm-sec.is-mine { box-shadow: 0 0 26px rgba(47, 155, 255, 0.24), 0 12px 34px rgba(0, 0, 0, 0.55); }
+.tm-sec.tm-sec--reset { animation: tmResetFlash 0.38s ease-out; }
+
+/* Dim non-shooting tower during Match Point, spotlight the active Match Point tower */
+.tm.tm--matchpoint .tm-sec:not(.tm-sec--matchpoint) {
+  filter: brightness(0.4) saturate(0.55);
+  transform: scale(0.98);
+}
+.tm-sec.tm-sec--matchpoint {
+  z-index: 15;
+  border-color: #ffd966 !important;
+  box-shadow:
+    0 0 0 2px #ff5c8a,
+    0 0 44px rgba(255, 201, 40, 0.8),
+    inset 0 0 28px rgba(255, 92, 138, 0.3) !important;
+  animation: tmTowerPulse 0.45s infinite alternate ease-in-out;
+}
+
+/* Match Point Alert Banner inside Tower */
+.tm-mp-banner {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%) scale(0.85);
+  padding: 3px 12px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ff3d7f, #ffc928, #25d6c4);
+  background-size: 200% 100%;
+  color: #0b1020;
+  font-size: clamp(.6rem, 1.05vh, .74rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 0 20px rgba(255, 201, 40, 0.9);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 20;
+  transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.tm-sec.tm-sec--matchpoint .tm-mp-banner {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
+  animation: tmBannerShimmer 1s linear infinite;
+}
+
+/* Tower Top Header + Avatar + Wi-Fi Badge + Tray + Restart */
+.tm-top {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #1e2942;
+  z-index: 4;
+}
+
+.tm-top-row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.tm-identity {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* STRICT BOUNDARIES: Circular 16-Bit Headshot Avatar in Top Bar */
+.tm-player-avatar {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  max-width: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  border-radius: 50%;
+  border: 2px solid #38bdf8;
+  background: #162038;
+  object-fit: cover !important;
+  object-position: center top;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+}
+.tm-sec--2 .tm-player-avatar {
+  border-color: #ff5c8a;
+  box-shadow: 0 0 10px rgba(255, 92, 138, 0.35);
+}
+
+.tm-id-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.tm-pname {
+  font-size: clamp(.72rem, 1.3vh, .86rem);
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tm-sec--1 .tm-pname { color: #6fc3ff; }
+.tm-sec--2 .tm-pname { color: #ff7fa8; }
+.tm-you {
+  font-size: .55rem;
+  padding: 1px 5px;
+  border-radius: 99px;
+  background: #13324a;
+  color: #25d6c4;
+  border: 1px solid #1f5a73;
+  flex-shrink: 0;
+}
+
+/* Wi-Fi "Karakter Hazır" Status Badge */
+.tm-wifi-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: clamp(.54rem, 0.95vh, .64rem);
+  font-weight: 700;
+  color: #3ddc97;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.tm-wifi-icon {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #3ddc97;
+  box-shadow: 0 0 6px #3ddc97;
+  flex-shrink: 0;
+}
+
+.tm-top-row2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.tm-sub { font-size: clamp(.62rem, 1.05vh, .74rem); color: #8b91a5; white-space: nowrap; }
+.tm-sub b { color: #fff; }
+
+/* Prominent 'Yeniden Başlat (R)' Button */
+.tm-restart {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: clamp(.58rem, 1vh, .68rem);
+  font-weight: 800;
+  color: #ffd966;
+  background: linear-gradient(180deg, #3a2d0b 0%, #241b05 100%);
+  border: 1px solid #b88c19;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  transition: filter 0.12s, transform 0.08s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tm-restart:hover:not(:disabled) { filter: brightness(1.22); }
+.tm-restart:active:not(:disabled) { transform: scale(0.95); }
+.tm-restart:disabled { opacity: 0.35; cursor: default; }
+.tm-restart kbd {
+  background: #120e03;
+  border: 1px solid #8a6a10;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: .85em;
+  color: #fff3b0;
+}
+
+/* 3-Slot Tray at top of tower */
+.tm-tray {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 3px 7px;
+  background: #070b16;
+  border: 1px solid #25304b;
+  border-radius: 9px;
+}
+.tm-tray--err {
+  border-color: #ef4444;
+  animation: tmShake 0.32s ease-in-out;
+}
+.tm-tray--clear {
+  border-color: #10b981;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.6);
+}
+
+.tm-slot {
+  width: clamp(20px, 2.6vh, 27px);
+  height: clamp(20px, 2.6vh, 27px);
+  border-radius: 6px;
+  border: 2px dashed #2d3856;
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(.64rem, 1.25vh, .82rem);
+  font-weight: 900;
+  color: #fff;
+}
+.tm-slot.filled { border-style: solid; }
+
+/* Tall 5-Column Vertical Tower Playfield (14-15 rows deep) */
+.tm-field {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: clamp(3px, 0.4vw, 5px);
+  padding: 4px 2px;
+  background: rgba(5, 9, 18, 0.65);
+  border-radius: 8px;
+  margin: 2px 0;
+  overflow: hidden;
+}
+
+.tm-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: clamp(1.5px, 0.26vh, 3px);
+  height: 100%;
+  min-height: 0;
+  padding: 2px 1px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.015);
+  border-left: 1px solid rgba(255, 255, 255, 0.025);
+  border-right: 1px solid rgba(255, 255, 255, 0.025);
+  cursor: pointer;
+  z-index: 2;
+}
+.tm-col.aimed {
+  background: rgba(56, 189, 248, 0.085);
+}
+
+/* Compact Stacked Blocks inside Tall Tower (fits 15 rows + character shooter track) */
+.tm-block {
+  position: relative;
+  width: 100%;
+  height: calc((100% - (15 * clamp(1.5px, 0.26vh, 3px))) / 16.2);
+  min-height: 9px;
+  max-height: 24px;
+  border-radius: 4px;
+  border: 1.5px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(.52rem, 1vh, .74rem);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.28), 0 1px 3px rgba(0, 0, 0, 0.35);
+  box-sizing: border-box;
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+/* Wrapped border highlight on the targeted lowest block */
+.tm-block.targeted {
+  border-color: #ffffff !important;
+  box-shadow: 0 0 0 2px #38bdf8, 0 0 14px var(--glow, #38bdf8) !important;
+  transform: scale(1.04);
+  z-index: 4;
+}
+
+/* Dramatic Target Lock on the Final Block during Match Point */
+.tm-sec.tm-sec--matchpoint .tm-block.targeted {
+  border-color: #fff !important;
+  box-shadow:
+    0 0 0 3px #ffd966,
+    0 0 24px #ff3d7f,
+    0 0 40px #ffd966 !important;
+  animation: tmFinalBlockPulse 0.28s infinite alternate ease-in-out;
+}
+
+/* Vertical Targeting Line */
+.tm-laser {
+  position: absolute;
+  width: 3px;
+  border-radius: 99px;
+  pointer-events: none;
+  transform: translateX(-50%);
+  z-index: 1;
+  transition: left 0.06s ease-out, top 0.06s ease-out, height 0.06s ease-out;
+}
+
+/* Intense Glowing Color-Shifting Targeting Beam during Slow-Mo Match Point */
+.tm-sec.tm-sec--matchpoint .tm-laser {
+  width: 6px;
+  background: linear-gradient(180deg, #ffffff 0%, #ffd966 30%, #ff3d7f 70%, #25d6c4 100%) !important;
+  box-shadow:
+    0 0 12px #ffffff,
+    0 0 24px #ffd966,
+    0 0 42px #ff3d7f !important;
+  animation: tmLaserOvercharge 0.22s infinite alternate ease-in-out;
+}
+
+/* Energy Pulse Projectile traveling UP from the Character Shooter at 2200 PPS */
+.tm-projectile {
+  position: fixed;
+  width: 14px;
+  height: 22px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 50% 30%, #ffffff 0%, var(--proj-color, #38bdf8) 70%);
+  border: 2px solid #ffffff;
+  box-shadow:
+    0 0 12px #ffffff,
+    0 0 22px var(--proj-color, #38bdf8),
+    0 10px 18px var(--proj-color, #38bdf8);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 9998;
+  transition-property: top, left, transform;
+  transition-timing-function: linear;
+}
+.tm-projectile::after {
+  content: '';
+  position: absolute;
+  top: 75%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 6px;
+  height: 20px;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, var(--proj-color, #38bdf8), transparent);
+  opacity: 0.85;
+}
+
+/* Supercharged Slow-Motion Final Shot Projectile */
+.tm-projectile.tm-projectile--slowmo {
+  width: 22px;
+  height: 30px;
+  background: radial-gradient(circle at 50% 35%, #ffffff 0%, #ffd966 45%, #ff3d7f 90%);
+  box-shadow:
+    0 0 16px #ffffff,
+    0 0 32px #ffd966,
+    0 0 56px #ff3d7f;
+  transition-timing-function: cubic-bezier(0.15, 0.65, 0.35, 1);
+  animation: tmSlowMoOrb 0.18s infinite alternate ease-in-out;
+}
+.tm-projectile.tm-projectile--slowmo::after {
+  width: 11px;
+  height: 44px;
+  background: linear-gradient(to bottom, #ffd966, #ff3d7f, transparent);
+  opacity: 0.95;
+}
+
+/* =====================================================================
+   BOTTOM CHARACTER SHOOTER TRACK (Character Moves Across 5 Columns & Fires!)
+   STRICT CSS BOUNDARIES FOR .tm-character-sprite AND .tm-shooter
+   ===================================================================== */
+.tm-track {
+  position: relative;
+  flex-shrink: 0;
+  height: clamp(58px, 9.5vh, 80px);
+  max-height: 80px;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: clamp(3px, 0.4vw, 5px);
+  align-items: end;
+  border-top: 2px solid #1e2942;
+  padding-top: 4px;
+  background: linear-gradient(180deg, rgba(15, 25, 48, 0.35) 0%, rgba(56, 189, 248, 0.08) 100%);
+  border-radius: 0 0 10px 10px;
+  overflow: hidden;
+  z-index: 4;
+}
+.tm-sec--2 .tm-track {
+  background: linear-gradient(180deg, rgba(15, 25, 48, 0.35) 0%, rgba(255, 61, 127, 0.08) 100%);
+}
+
+/* STRICT BOUNDARIES: .tm-character-sprite / .tm-shooter inside the 5-column track */
+.tm-shooter,
+.tm-character-sprite {
+  position: relative;
+  grid-column: var(--col, 3);
+  justify-self: center;
+  width: 100% !important;
+  max-width: 58px !important;
+  height: clamp(50px, 8.6vh, 72px) !important;
+  max-height: 72px !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  cursor: pointer;
+  overflow: visible;
+  transition: transform 0.09s cubic-bezier(0.22, 1, 0.36, 1), filter 0.15s ease;
+}
+
+/* Glowing Muzzle / Aim Indicator at Top of Character Shooter */
+.tm-shooter::before {
+  content: '▲';
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  line-height: 1;
+  color: #38bdf8;
+  text-shadow: 0 0 8px #38bdf8, 0 0 14px #fff;
+  pointer-events: none;
+  z-index: 5;
+}
+.tm-sec--2 .tm-shooter::before {
+  color: #ff5c8a;
+  text-shadow: 0 0 8px #ff5c8a, 0 0 14px #fff;
+}
+
+.tm-shooter-img,
+.tm-character-sprite img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 54px !important;
+  max-height: 68px !important;
+  object-fit: contain !important;
+  object-position: center bottom;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.55));
+  transition: transform 0.09s ease, filter 0.15s ease;
+  pointer-events: none;
+}
+.tm-sec--2 .tm-shooter-img,
+.tm-sec--2 .tm-character-sprite img {
+  filter: drop-shadow(0 0 6px rgba(255, 92, 138, 0.55));
+}
+
+/* Idle breathing animation on the character shooter */
+.tm-shooter.state-idle .tm-shooter-img,
+.tm-character-sprite.state-idle img {
+  animation: tmCharIdle 1.4s ease-in-out infinite alternate;
+}
+
+/* Firing / Recoil burst when shooting */
+.tm-shooter.recoil,
+.tm-shooter.state-shooting,
+.tm-character-sprite.state-shooting {
+  transform: translateY(-4px) scale(1.06);
+}
+.tm-shooter.recoil .tm-shooter-img,
+.tm-shooter.state-shooting .tm-shooter-img,
+.tm-character-sprite.state-shooting img {
+  filter: drop-shadow(0 0 12px #ffffff) drop-shadow(0 0 20px #38bdf8);
+}
+
+/* Match Point Supercharged Character State */
+.tm-shooter.state-matchpoint .tm-shooter-img,
+.tm-character-sprite.state-matchpoint img {
+  animation: tmCharPower 0.22s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 14px #ffd966) drop-shadow(0 0 24px #ff3d7f);
+}
+
+.tm-shooter.locked {
+  cursor: wait;
+}
+
+/* =====================================================================
+   MODAL CHARACTER SELECTION SCREEN (Hides Game Boards Completely Until Done)
+   ===================================================================== */
+.tm-select-screen {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 20%, #15203d 0%, #090d19 75%, #05070f 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 1.8vh, 18px);
+  padding: 16px;
+  z-index: 45;
+  overflow: hidden;
+}
+.tm-select-screen.hidden {
+  display: none !important;
+}
+
+.tm-sel-modal {
+  width: 100%;
+  max-width: 680px;
+  max-height: 100%;
+  background: linear-gradient(180deg, #131c34 0%, #0c1222 100%);
+  border: 2px solid #2b3a5e;
+  border-radius: 18px;
+  padding: clamp(14px, 2.2vh, 24px) clamp(16px, 2.5vw, 28px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(10px, 1.8vh, 16px);
+  overflow: hidden;
+}
+
+.tm-sel-header {
+  text-align: center;
+  flex-shrink: 0;
+}
+.tm-sel-title {
+  margin: 0;
+  font-size: clamp(1.2rem, 2.8vh, 1.75rem);
+  font-weight: 900;
+  background: linear-gradient(90deg, #6fc3ff, #ff7fa8, #ffd966);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 0.04em;
+}
+.tm-sel-sub {
+  margin: 4px 0 0;
+  font-size: clamp(.72rem, 1.3vh, .86rem);
+  color: #9aa6c6;
+}
+
+.tm-sel-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 230px));
+  justify-content: center;
+  align-items: stretch;
+  gap: clamp(14px, 3vw, 28px);
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.tm-char-card {
+  position: relative;
+  width: 100%;
+  max-width: 230px;
+  background: linear-gradient(180deg, #162240 0%, #0d1426 100%);
+  border: 2px solid #2b3c60;
+  border-radius: 14px;
+  padding: clamp(8px, 1.4vh, 14px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.tm-char-card:hover {
+  transform: translateY(-3px);
+  border-color: #6fc3ff;
+}
+.tm-char-card.picked-p1 {
+  border-color: #38bdf8;
+  box-shadow: 0 0 22px rgba(56, 189, 248, 0.4);
+}
+.tm-char-card.picked-p2 {
+  border-color: #ff3d7f;
+  box-shadow: 0 0 22px rgba(255, 61, 127, 0.4);
+}
+.tm-char-card.picked-p1.picked-p2 {
+  border-color: #ffd966;
+  box-shadow: 0 0 26px rgba(255, 217, 102, 0.5);
+}
+
+/* STRICT IMAGE BOX IN CHARACTER SELECTION MODAL */
+.tm-char-card-art {
+  width: 100%;
+  height: clamp(110px, 22vh, 175px);
+  max-height: 175px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 55%, rgba(56, 189, 248, 0.16), transparent 70%);
+  border-radius: 10px;
+  padding: 6px;
+  overflow: hidden;
+}
+.tm-char-card[data-char="sinem"] .tm-char-card-art {
+  background: radial-gradient(circle at 50% 55%, rgba(255, 61, 127, 0.18), transparent 70%);
+}
+.tm-char-card-art img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 130px !important;
+  max-height: 160px !important;
+  object-fit: contain !important;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.6));
+}
+
+.tm-char-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tm-char-card-avatar {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  border-radius: 50%;
+  border: 1.5px solid #6fc3ff;
+  object-fit: cover !important;
+  object-position: center top;
+  flex-shrink: 0;
+}
+.tm-char-card[data-char="sinem"] .tm-char-card-avatar {
+  border-color: #ff7fa8;
+}
+
+.tm-char-card-name {
+  font-size: clamp(.92rem, 1.7vh, 1.1rem);
+  font-weight: 900;
+  color: #fff;
+}
+.tm-char-card-desc {
+  font-size: clamp(.64rem, 1.1vh, .74rem);
+  color: #8b91a5;
+  text-align: center;
+}
+
+.tm-char-picks {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  min-height: 22px;
+}
+.tm-pick-pill {
+  font-size: .64rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 99px;
+}
+.tm-pick-pill--p1 {
+  background: rgba(56, 189, 248, 0.2);
+  color: #6fc3ff;
+  border: 1px solid #38bdf8;
+}
+.tm-pick-pill--p2 {
+  background: rgba(255, 61, 127, 0.2);
+  color: #ff7fa8;
+  border: 1px solid #ff3d7f;
+}
+
+.tm-sel-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  width: 100%;
+}
+.tm-sel-status {
+  display: flex;
+  gap: 16px;
+  font-size: .78rem;
+  color: #cbd5e1;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.tm-sel-status span.rdy {
+  color: #3ddc97;
+  font-weight: 800;
+}
+
+.tm-btn-ready {
+  cursor: pointer;
+  border: none;
+  border-radius: 11px;
+  padding: 10px 26px;
+  font-size: clamp(.82rem, 1.5vh, .96rem);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #06241e;
+  background: linear-gradient(90deg, #25d6c4, #2ee08a);
+  box-shadow: 0 0 18px rgba(37, 214, 196, 0.45);
+  transition: transform 0.1s ease, filter 0.15s ease;
+}
+.tm-btn-ready:hover:not(:disabled) {
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+}
+.tm-btn-ready.is-ready {
+  background: #12382f;
+  color: #2ee08a;
+  border: 1px solid #1d6b52;
+  box-shadow: none;
+}
+
+/* Flying Block Clone (Block -> Tray & Tray -> Column on Error) */
+.tm-flyer {
+  position: fixed;
+  border-radius: 5px;
+  border: 2px solid #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 0.8rem;
+  color: #fff;
+  pointer-events: none;
+  z-index: 9999;
+  transition-property: left, top, width, height;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.tm-hint {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: clamp(.6rem, 1.05vh, .72rem);
+  color: #8b91a5;
+  z-index: 6;
+}
+.tm-hint kbd {
+  background: #181b24;
+  border: 1px solid #2d3243;
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #e8eaf0;
+}
+
+.tm-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(9, 13, 24, 0.86);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.tm-modal {
+  background: #141b2d;
+  border: 1px solid #2f9bff66;
+  border-radius: 16px;
+  padding: 24px 32px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 16px 48px #000c;
+}
+.tm-mtitle { font-size: 1.5rem; font-weight: 900; color: #ffd966; }
+.tm-msub { font-size: .88rem; color: #9aa6c6; margin-bottom: 6px; }
+.tm-modal-btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+
+@keyframes tmShake {
+  20%, 60% { transform: translateX(-5px); }
+  40%, 80% { transform: translateX(5px); }
+}
+@keyframes tmResetFlash {
+  0% { box-shadow: 0 0 0 2px #ffd966, inset 0 0 24px rgba(255, 217, 102, 0.35); }
+  100% { box-shadow: none; }
+}
+@keyframes tmTowerPulse {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.015); }
+}
+@keyframes tmLaserOvercharge {
+  0% { filter: hue-rotate(0deg) brightness(1.1); width: 5px; }
+  100% { filter: hue-rotate(35deg) brightness(1.4); width: 8px; }
+}
+@keyframes tmFinalBlockPulse {
+  0% { transform: scale(1.04); }
+  100% { transform: scale(1.14); }
+}
+@keyframes tmSlowMoOrb {
+  0% { transform: translate(-50%, -50%) scale(0.95); }
+  100% { transform: translate(-50%, -50%) scale(1.15); }
+}
+@keyframes tmBannerShimmer {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+@keyframes tmCharIdle {
+  0% { transform: translateY(0px); }
+  100% { transform: translateY(-3px); }
+}
+@keyframes tmCharPower {
+  0% { transform: translateY(-2px) scale(1.04); }
+  100% { transform: translateY(-6px) scale(1.12); }
+}
