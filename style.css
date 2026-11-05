@@ -95,7 +95,7 @@ input[type=text]:focus { outline: 2px solid var(--accent-2); border-color: trans
 .side-body { display: flex; flex-direction: column; gap: 18px; }
 .side-toggle { display: none; }
 
-/* ===== In-game: zero-scroll viewport lock (Task 1 & Task 2) ===== */
+/* ===== In-game: zero-scroll viewport lock across all games ===== */
 body.in-game { height: 100vh; height: 100dvh; overflow: hidden; }
 body.in-game .app { max-width: none; width: 100%; height: 100vh; height: 100dvh; padding: 6px 12px 8px; display: flex; flex-direction: column; overflow: hidden; }
 body.in-game header { margin-bottom: 4px; flex-shrink: 0; }
@@ -143,6 +143,230 @@ body.in-game .mic-btn { padding: 5px 10px; font-size: .82rem; }
 .player-list .tag + .kick-btn { margin-left: 8px; }
 
 /* =====================================================================
+   SCRAMBLE BOARD (#scramble-board / .sb) — Strict Responsive Containment
+   ===================================================================== */
+#scramble-board,
+.sb {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  padding: 4px 10px 6px;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(150px, 210px) minmax(0, 1fr) minmax(150px, 210px);
+  gap: clamp(10px, 1.6vw, 18px);
+  align-items: start;
+  color: #e8ecf7;
+  overflow: hidden;
+}
+@media (max-width: 900px) {
+  #scramble-board,
+  .sb { grid-template-columns: 1fr 1fr; overflow-y: auto; }
+  .sb-center { grid-column: 1 / -1; order: -1; }
+}
+
+.sb-col {
+  background: #0f1629;
+  border: 1px solid #25304b;
+  border-radius: 12px;
+  padding: clamp(10px, 1.4vh, 14px);
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+.sb-col--1 { border-color: #2aa7c988; }
+.sb-col--2 { border-color: #ff3d7f88; }
+.sb-col.turn { box-shadow: 0 0 16px #ffc92844; }
+.sb-col.winner { border-color: #2ee08a; box-shadow: 0 0 20px #2ee08a66; }
+.sb-pname { font-weight: 800; font-size: clamp(.82rem, 1.4vh, .95rem); overflow-wrap: anywhere; }
+.sb-pscore { font-size: clamp(1.6rem, 3.2vh, 2.5rem); font-weight: 900; line-height: 1; }
+.sb-col--1 .sb-pscore { color: #6fc3ff; }
+.sb-col--2 .sb-pscore { color: #ff7fa8; }
+.sb-pmeta { font-size: .72rem; color: #ffd966; min-height: 1em; }
+.sb-stat { display: flex; justify-content: space-between; background: #141d36; border-radius: 8px; padding: 5px 10px; font-size: .78rem; color: #9aa6c6; }
+.sb-stat b { color: #fff; }
+.sb-lastinfo { font-size: .74rem; color: #ffd966; overflow-wrap: anywhere; }
+
+.sb-center {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(4px, 0.7vh, 8px);
+  min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.sb-info {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 100%;
+}
+.sb-status { font-weight: 800; font-size: clamp(.82rem, 1.5vh, 1rem); text-align: center; line-height: 1.2; }
+.sb-log { font-size: clamp(.7rem, 1.2vh, .8rem); color: #9aa6c6; text-align: center; min-height: 1.1em; line-height: 1.2; }
+.sb-notice { font-size: .76rem; color: #ff7b7b; font-weight: 700; text-align: center; }
+
+.sb-board-wrap {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.sb-board {
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  grid-template-rows: repeat(15, 1fr);
+  gap: 2px;
+  padding: 5px;
+  background: #0b1020;
+  border: 1px solid #25304b;
+  border-radius: 10px;
+  aspect-ratio: 1 / 1;
+  height: 100%;
+  max-height: min(100%, calc(100dvh - var(--header-height, 118px) - 168px));
+  width: auto;
+  max-width: 100%;
+  box-sizing: border-box;
+  user-select: none;
+}
+
+.sb-cell {
+  aspect-ratio: 1;
+  background: #141a2e;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(.48rem, 1.05vh, .9rem);
+  color: #ff5c8a66;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+.sb-cell.star { background: #241a2e; }
+.sb-cell.drop { cursor: pointer; outline: 1px dashed #6c8cff55; }
+.sb-cell.drop:hover { background: #6c8cff33; }
+
+.sb-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  font-weight: 800;
+  font-size: clamp(.6rem, 1.45vh, 1.15rem);
+  color: #2b1c00;
+  background: linear-gradient(145deg, #f6dfae, #d6a84f);
+  border: 1px solid #fff0c4;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.sb-tile sub { position: absolute; right: 2px; bottom: 0; font-size: .5em; font-weight: 700; line-height: 1; }
+.sb-tile.last { box-shadow: 0 0 0 2px #ffc928, 0 0 8px #ffc928aa; }
+.sb-tile.pending { background: linear-gradient(145deg, #bcd2ff, #6c8cff); border-color: #e6efff; color: #0a1a44; cursor: pointer; }
+.sb-tile.joker { color: #a3125a; }
+
+.sb-dock {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(5px, 0.8vh, 8px);
+  width: 100%;
+  padding-bottom: 2px;
+  box-sizing: border-box;
+  z-index: 5;
+}
+
+.sb-rack {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+  padding: clamp(5px, 0.8vh, 8px) 10px;
+  background: #0f1629;
+  border: 1px solid #25304b;
+  border-radius: 12px;
+  min-height: clamp(46px, 6.8vh, 58px);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.sb-rack.idle { opacity: .65; }
+.sb-tile.hand {
+  width: clamp(34px, 5.2vh, 48px);
+  height: clamp(34px, 5.2vh, 48px);
+  font-size: clamp(.95rem, 2vh, 1.35rem);
+  border-radius: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.sb-tile.hand:disabled { cursor: default; }
+.sb-tile.hand.sel { transform: translateY(-5px); box-shadow: 0 0 0 2px #6c8cff, 0 6px 12px #0008; }
+
+.sb-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+.sb-btn {
+  cursor: pointer;
+  border: 1px solid #2d3243;
+  border-radius: 9px;
+  padding: clamp(6px, 1vh, 9px) clamp(12px, 1.6vw, 18px);
+  font-size: clamp(.78rem, 1.35vh, .88rem);
+  font-weight: 700;
+  color: #e8eaf0;
+  background: #222633;
+  line-height: 1.1;
+}
+.sb-btn:hover:not(:disabled) { filter: brightness(1.2); }
+.sb-btn:disabled { opacity: .4; cursor: not-allowed; }
+.sb-btn--go { background: linear-gradient(90deg, #25d6c4, #2ee08a); color: #06241e; border: none; }
+.sb-btn--ghost { background: transparent; }
+.sb-btn--veto { background: #3a1218; color: #ff7b7b; border-color: #ff5c5c88; width: 100%; margin-top: 2px; }
+
+.sb-picker {
+  position: absolute;
+  inset: auto 12px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #0f1629ee;
+  backdrop-filter: blur(4px);
+  border: 2px solid #d9a92c;
+  border-radius: 12px;
+  z-index: 10;
+  box-shadow: 0 12px 32px #000c;
+}
+.sb-letters { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; max-width: 420px; }
+.sb-letter { width: 32px; height: 32px; cursor: pointer; font-weight: 800; color: #2b1c00; background: linear-gradient(145deg, #f6dfae, #d6a84f); border: 1px solid #fff0c4; border-radius: 6px; }
+
+/* =====================================================================
    TUMBLE MATCH — Strict Image Boundaries, Character Select & Tall Towers
    ===================================================================== */
 .tm {
@@ -172,6 +396,8 @@ body.in-game .mic-btn { padding: 5px 10px; font-size: .82rem; }
 /* CRITICAL DEFENSIVE GUARD: Prevent any image inside .tm from overflowing its box */
 .tm img {
   display: block;
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
@@ -314,7 +540,7 @@ body.in-game .mic-btn { padding: 5px 10px; font-size: .82rem; }
   border-radius: 50%;
   border: 2px solid #38bdf8;
   background: #162038;
-  object-fit: cover !important;
+  object-fit: contain !important;
   object-position: center top;
   image-rendering: pixelated;
   flex-shrink: 0;
@@ -846,7 +1072,7 @@ body.in-game .mic-btn { padding: 5px 10px; font-size: .82rem; }
   max-height: 28px !important;
   border-radius: 50%;
   border: 1.5px solid #6fc3ff;
-  object-fit: cover !important;
+  object-fit: contain !important;
   object-position: center top;
   flex-shrink: 0;
 }

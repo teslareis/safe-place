@@ -1,22 +1,29 @@
 /**
- * Tumble Match (Tumblestone Clone) — Choosable 16-Bit Characters (tesla & Sinem)
+ * Tumble Match (Tumblestone Clone) — Production-Ready GitHub Pages Edition
  *
  * Key Engineering Features:
- *   1. Strict CSS & DOM Image Boundaries:
- *      - `.tm-player-avatar` (34x34px circular portrait) and `.tm-character-sprite` / `.tm-shooter-img`
- *        (54x68px moving bottom shooter) are strictly bounded via both CSS and defensive inline styles.
- *   2. Modal Character Selection Screen (`phase === 'select'`):
- *      - Hides the game boards completely until character selection is done.
- *      - Players choose between 'tesla' and 'Sinem' (loaded from `resimler/` and `assets/`),
- *        dynamically assigning the chosen avatar and bottom moving shooter sprite to each player's UI.
- *   3. Input Spam Filter:
+ *   1. Strict Lowercase Asset Paths (Linux / GitHub Pages Case-Sensitivity Safe):
+ *      - Uses exclusively:
+ *        - `assets/tesla-full.png`
+ *        - `assets/tesla-avatar.png`
+ *        - `assets/sinem-full.png`
+ *        - `assets/sinem-avatar.png`
+ *      - Zero uppercase characters, spaces, Turkish characters, or mixed extensions in file paths.
+ *   2. Strict CSS & DOM Image Boundaries:
+ *      - `.tm-player-avatar` and `.tm-character-sprite` / `.tm-shooter-img` enforce strict
+ *        `max-width`, `max-height`, `width: 100%`, `height: 100%`, and `object-fit: contain`
+ *        so images never overflow or overlap the viewport.
+ *   3. Modal Character Selection Screen (`phase === 'select'`):
+ *      - Hides the game boards completely until selection is done.
+ *      - Players choose between 'tesla' and 'Sinem', dynamically assigning the chosen
+ *        avatar and full sprite to each player's UI slot.
+ *   4. Input Spam Filter:
  *      - Strict `activeProjectile !== null` lock per player blocks any new shot while a projectile is in flight.
- *   4. Strict Mathematical Puzzle Restores:
+ *   5. Strict Mathematical Puzzle Restores:
  *      - Mismatch errors revert the player's 5 columns strictly to `preTripletColumns`
- *        (the exact mathematical board state before the incomplete triplet began).
- *      - 'Yeniden Başlat (R)' restores strictly from `this.initialLayout` (the host's
- *        deep-copied 72-block solvable 5-column matrix). Never generates random blocks on error/reset.
- *   5. Natural Physics Flight Speed (2200 PPS) + Match Point Slow-Motion:
+ *        (the exact mathematical state of the 72-block matrix before that triplet began).
+ *      - 'Yeniden Başlat (R)' restores strictly from `this.initialLayout`. Zero random block generation.
+ *   6. Natural Physics Flight Speed (2200 PPS) + Match Point Slow-Motion:
  *      - Every shot computes `time = distance / velocity` using `PROJECTILE_VELOCITY_PPS = 2200`.
  *      - Overridden to `FINAL_SHOT_MS = 2000` (2.0s dramatic slow-motion) ONLY on Match Point
  *        (`isFinalShot`, when `b.remaining === 1`).
@@ -33,24 +40,21 @@ const TumbleMatch = {
   MIN_FLIGHT_MS: 45,             // Minimum visible pulse time for point-blank bottom row
   FINAL_SHOT_MS: 2000,           // 2.0s dramatic slow-motion for Match Point (last block left)
 
+  // Strictly standardized lowercase relative paths for Linux / GitHub Pages deployment
   CHARACTERS: {
     tesla: {
       id: 'tesla',
       name: 'tesla',
       desc: 'Oyuncu 1 • Klasik Ceket & Gözlük',
-      sprite: 'resimler/tesla-sprite.png',
-      fullAsset: 'assets/tesla-full.png',
-      avatar: 'resimler/tesla-avatar.png',
-      avatarAsset: 'assets/tesla-avatar.png',
+      full: 'assets/tesla-full.png',
+      avatar: 'assets/tesla-avatar.png',
     },
     sinem: {
       id: 'sinem',
       name: 'Sinem',
       desc: 'Oyuncu 2 • Asimetrik Bluz & Çanta',
-      sprite: 'resimler/sinem-sprite.png',
-      fullAsset: 'assets/sinem-full.png',
-      avatar: 'resimler/sinem-avatar.png',
-      avatarAsset: 'assets/sinem-avatar.png',
+      full: 'assets/sinem-full.png',
+      avatar: 'assets/sinem-avatar.png',
     },
   },
 
@@ -739,8 +743,7 @@ const TumbleMatch = {
                 <div class="tm-char-card" data-char="${ch.id}">
                   <div class="tm-char-card-art">
                     <img
-                      src="${ch.sprite}"
-                      onerror="this.onerror=null;this.src='${ch.fullAsset}';"
+                      src="${ch.full}"
                       alt="${ch.name}"
                       style="width:100%;height:100%;max-width:130px;max-height:160px;object-fit:contain;"
                     />
@@ -749,7 +752,6 @@ const TumbleMatch = {
                     <img
                       class="tm-char-card-avatar"
                       src="${ch.avatar}"
-                      onerror="this.onerror=null;this.src='${ch.avatarAsset}';"
                       alt="${ch.name}"
                       style="width:28px;height:28px;max-width:28px;max-height:28px;border-radius:50%;object-fit:cover;"
                     />
@@ -785,7 +787,6 @@ const TumbleMatch = {
                       <img
                         class="tm-player-avatar"
                         src="${defChar.avatar}"
-                        onerror="this.onerror=null;this.src='${defChar.avatarAsset}';"
                         alt="${defChar.name} avatar"
                         style="width:34px;height:34px;max-width:34px;max-height:34px;border-radius:50%;object-fit:cover;"
                       />
@@ -823,8 +824,7 @@ const TumbleMatch = {
                   <div class="tm-shooter tm-character-sprite state-idle" style="--col: 3; width:100%; max-width:58px; height:64px; max-height:72px;" title="Ateş Et (Space / Tıkla)">
                     <img
                       class="tm-shooter-img"
-                      src="${defChar.sprite}"
-                      onerror="this.onerror=null;this.src='${defChar.fullAsset}';"
+                      src="${defChar.full}"
                       alt="${defChar.name}"
                       style="width:100%;height:100%;max-width:54px;max-height:68px;object-fit:contain;"
                     />
@@ -1070,16 +1070,14 @@ const TumbleMatch = {
       p.sec.classList.toggle('is-mine', !!isMe);
       p.sec.classList.toggle('tm-sec--matchpoint', !!(s.phase === 'play' && b.matchPoint));
 
-      // Dynamically assign selected character's avatar & bottom moving shooter sprite
+      // Dynamically assign selected character's strictly lowercase avatar & full sprite paths
       if (p.avatarImg.dataset.charId !== charMeta.id) {
         p.avatarImg.dataset.charId = charMeta.id;
-        p.avatarImg.onerror = () => { p.avatarImg.onerror = null; p.avatarImg.src = charMeta.avatarAsset; };
         p.avatarImg.src = charMeta.avatar;
       }
       if (p.shooterImg.dataset.charId !== charMeta.id) {
         p.shooterImg.dataset.charId = charMeta.id;
-        p.shooterImg.onerror = () => { p.shooterImg.onerror = null; p.shooterImg.src = charMeta.fullAsset; };
-        p.shooterImg.src = charMeta.sprite;
+        p.shooterImg.src = charMeta.full;
       }
       p.charStatusLabel.textContent = `📶 ${charMeta.name} Hazır • Oyuncu ${side + 1}`;
 
