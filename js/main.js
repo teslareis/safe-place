@@ -447,36 +447,54 @@
     if (containerEl === screenContainer && screenMinBtn) screenMinBtn.textContent = '−';
 
     const fsEl = getActiveFullscreenElement();
-    if (fsEl && (fsEl === containerEl || fsEl === videoEl || containerEl.contains(fsEl))) {
-      exitNativeFullscreen();
-    } else if (fsEl) {
-      // Switch fullscreen from another element to this container
-      const p = exitNativeFullscreen();
-      if (p && typeof p.then === 'function') {
-        p.then(() => requestNativeFullscreen(containerEl, videoEl));
+    const isAlreadyFs = Boolean(
+      (fsEl && (fsEl === containerEl || fsEl === videoEl || containerEl.contains(fsEl))) ||
+      containerEl.classList.contains('is-fullscreen')
+    );
+
+    if (isAlreadyFs) {
+      containerEl.classList.remove('is-fullscreen');
+      if (fsEl) exitNativeFullscreen();
+      syncFullscreenState();
+    } else {
+      if (screenContainer) screenContainer.classList.remove('is-fullscreen');
+      if (remoteVideoCard) remoteVideoCard.classList.remove('is-fullscreen');
+      if (localVideoCard) localVideoCard.classList.remove('is-fullscreen');
+      containerEl.classList.add('is-fullscreen');
+      syncFullscreenState();
+
+      if (fsEl) {
+        const p = exitNativeFullscreen();
+        if (p && typeof p.then === 'function') {
+          p.then(() => requestNativeFullscreen(containerEl, videoEl));
+        } else {
+          requestNativeFullscreen(containerEl, videoEl);
+        }
       } else {
         requestNativeFullscreen(containerEl, videoEl);
       }
-    } else {
-      requestNativeFullscreen(containerEl, videoEl);
     }
   }
 
   function syncFullscreenState() {
     const fsEl = getActiveFullscreenElement();
     const isScreenFs = Boolean(
-      fsEl && (fsEl === screenContainer || fsEl === screenVideo || (screenContainer && screenContainer.contains(fsEl)))
+      (fsEl && (fsEl === screenContainer || fsEl === screenVideo || (screenContainer && screenContainer.contains(fsEl)))) ||
+      (screenContainer && screenContainer.classList.contains('is-fullscreen'))
     );
     const isRemoteFs = Boolean(
-      fsEl && (fsEl === remoteVideoCard || fsEl === remoteVideo || (remoteVideoCard && remoteVideoCard.contains(fsEl)))
+      (fsEl && (fsEl === remoteVideoCard || fsEl === remoteVideo || (remoteVideoCard && remoteVideoCard.contains(fsEl)))) ||
+      (remoteVideoCard && remoteVideoCard.classList.contains('is-fullscreen'))
     );
     const isLocalFs = Boolean(
-      fsEl && (fsEl === localVideoCard || fsEl === localVideo || (localVideoCard && localVideoCard.contains(fsEl)))
+      (fsEl && (fsEl === localVideoCard || fsEl === localVideo || (localVideoCard && localVideoCard.contains(fsEl)))) ||
+      (localVideoCard && localVideoCard.classList.contains('is-fullscreen'))
     );
 
     if (screenContainer) screenContainer.classList.toggle('is-fullscreen', isScreenFs);
     if (remoteVideoCard) remoteVideoCard.classList.toggle('is-fullscreen', isRemoteFs);
     if (localVideoCard) localVideoCard.classList.toggle('is-fullscreen', isLocalFs);
+    if (videoDock) videoDock.classList.toggle('has-fullscreen-card', isRemoteFs || isLocalFs);
 
     if (screenFsBtn) {
       screenFsBtn.textContent = isScreenFs ? '🗗 Çıkış / Exit' : '⛶ Tam Ekran / Fullscreen';
@@ -496,10 +514,28 @@
     }
   }
 
+  function onNativeFullscreenChange() {
+    const fsEl = getActiveFullscreenElement();
+    if (!fsEl) {
+      if (screenContainer) screenContainer.classList.remove('is-fullscreen');
+      if (remoteVideoCard) remoteVideoCard.classList.remove('is-fullscreen');
+      if (localVideoCard) localVideoCard.classList.remove('is-fullscreen');
+    }
+    syncFullscreenState();
+  }
+
   window.__safePlaceFullscreenInit = true;
-  document.addEventListener('fullscreenchange', syncFullscreenState);
-  document.addEventListener('webkitfullscreenchange', syncFullscreenState);
-  document.addEventListener('MSFullscreenChange', syncFullscreenState);
+  document.addEventListener('fullscreenchange', onNativeFullscreenChange);
+  document.addEventListener('webkitfullscreenchange', onNativeFullscreenChange);
+  document.addEventListener('MSFullscreenChange', onNativeFullscreenChange);
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (screenContainer) screenContainer.classList.remove('is-fullscreen');
+      if (remoteVideoCard) remoteVideoCard.classList.remove('is-fullscreen');
+      if (localVideoCard) localVideoCard.classList.remove('is-fullscreen');
+      syncFullscreenState();
+    }
+  });
 
   if (screenFsBtn && screenContainer) {
     screenFsBtn.onclick = e => {

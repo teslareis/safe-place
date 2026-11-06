@@ -1652,11 +1652,40 @@ body.in-game .screen-btn { padding: 5px 10px; font-size: .8rem; min-width: 88px;
 
 /* =====================================================================
    NATIVE FULLSCREEN MODE (:fullscreen / :-webkit-full-screen / .is-fullscreen)
-   Smoothly expands Screen-Share & Video Feeds to 100% viewport with crisp
-   object-fit: contain scaling and zero distortion.
+   Kept in separate rule blocks so vendor pseudo-classes never invalidate
+   standard selectors across different browser engines.
    ===================================================================== */
+.video-dock.has-fullscreen-card {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: #000000 !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  z-index: 2147483646 !important;
+}
+
+.video-dock.has-fullscreen-card .video-dock-header {
+  display: none !important;
+}
+
+.video-dock.has-fullscreen-card .video-dock-body {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 #screen-share-container:fullscreen,
-#screen-share-container:-webkit-full-screen,
 #screen-share-container.is-fullscreen {
   position: fixed !important;
   inset: 0 !important;
@@ -1674,6 +1703,31 @@ body.in-game .screen-btn { padding: 5px 10px; font-size: .8rem; min-width: 88px;
   border: none !important;
   border-radius: 0 !important;
   background: #000000 !important;
+  backdrop-filter: none !important;
+  box-shadow: none !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#screen-share-container:-webkit-full-screen {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  transform: none !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: #000000 !important;
+  backdrop-filter: none !important;
   box-shadow: none !important;
   z-index: 2147483647 !important;
   display: flex !important;
@@ -1681,9 +1735,17 @@ body.in-game .screen-btn { padding: 5px 10px; font-size: .8rem; min-width: 88px;
 }
 
 #screen-share-container:fullscreen .screen-share-body,
-#screen-share-container:-webkit-full-screen .screen-share-body,
 #screen-share-container.is-fullscreen .screen-share-body,
-.screen-share-body:fullscreen,
+.screen-share-body:fullscreen {
+  flex: 1 1 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  background: #000000 !important;
+}
+
+#screen-share-container:-webkit-full-screen .screen-share-body,
 .screen-share-body:-webkit-full-screen {
   flex: 1 1 0 !important;
   width: 100% !important;
@@ -1694,11 +1756,20 @@ body.in-game .screen-btn { padding: 5px 10px; font-size: .8rem; min-width: 88px;
 }
 
 #screen-share-container:fullscreen #screen-video,
-#screen-share-container:-webkit-full-screen #screen-video,
 #screen-share-container.is-fullscreen #screen-video,
 .screen-share-body:fullscreen #screen-video,
+#screen-video:fullscreen {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  background: #000000 !important;
+  border-radius: 0 !important;
+}
+
+#screen-share-container:-webkit-full-screen #screen-video,
 .screen-share-body:-webkit-full-screen #screen-video,
-#screen-video:fullscreen,
 #screen-video:-webkit-full-screen {
   width: 100% !important;
   height: 100% !important;
@@ -1710,12 +1781,34 @@ body.in-game .screen-btn { padding: 5px 10px; font-size: .8rem; min-width: 88px;
 }
 
 #remote-video-card:fullscreen,
-#remote-video-card:-webkit-full-screen,
 #remote-video-card.is-fullscreen,
 #local-video-card:fullscreen,
-#local-video-card:-webkit-full-screen,
 #local-video-card.is-fullscreen,
-.video-card:fullscreen,
+.video-card:fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: #000000 !important;
+  box-shadow: none !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+#remote-video-card:-webkit-full-screen,
+#local-video-card:-webkit-full-screen,
 .video-card:-webkit-full-screen {
   position: fixed !important;
   inset: 0 !important;
@@ -1740,16 +1833,25 @@ body.in-game .screen-btn { padding: 5px 10px; font-size: .8rem; min-width: 88px;
 }
 
 #remote-video-card:fullscreen #remote-video,
-#remote-video-card:-webkit-full-screen #remote-video,
 #remote-video-card.is-fullscreen #remote-video,
 #local-video-card:fullscreen #local-video,
-#local-video-card:-webkit-full-screen #local-video,
 #local-video-card.is-fullscreen #local-video,
 .video-card:fullscreen video,
-.video-card:-webkit-full-screen video,
 #remote-video:fullscreen,
+#local-video:fullscreen {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  background: #000000 !important;
+  border-radius: 0 !important;
+}
+
+#remote-video-card:-webkit-full-screen #remote-video,
+#local-video-card:-webkit-full-screen #local-video,
+.video-card:-webkit-full-screen video,
 #remote-video:-webkit-full-screen,
-#local-video:fullscreen,
 #local-video:-webkit-full-screen {
   width: 100% !important;
   height: 100% !important;
@@ -1761,10 +1863,8 @@ body.in-game .screen-btn { padding: 5px 10px; font-size: .8rem; min-width: 88px;
 }
 
 #remote-video-card:fullscreen .video-fs-btn,
-#remote-video-card:-webkit-full-screen .video-fs-btn,
 #remote-video-card.is-fullscreen .video-fs-btn,
 #local-video-card:fullscreen .video-fs-btn,
-#local-video-card:-webkit-full-screen .video-fs-btn,
 #local-video-card.is-fullscreen .video-fs-btn {
   top: 16px;
   right: 16px;
@@ -1772,12 +1872,26 @@ body.in-game .screen-btn { padding: 5px 10px; font-size: .8rem; min-width: 88px;
   font-size: 0.82rem;
 }
 
+#remote-video-card:-webkit-full-screen .video-fs-btn,
+#local-video-card:-webkit-full-screen .video-fs-btn {
+  top: 16px;
+  right: 16px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+}
+
 #remote-video-card:fullscreen .video-badge,
-#remote-video-card:-webkit-full-screen .video-badge,
 #remote-video-card.is-fullscreen .video-badge,
 #local-video-card:fullscreen .video-badge,
-#local-video-card:-webkit-full-screen .video-badge,
 #local-video-card.is-fullscreen .video-badge {
+  left: 16px;
+  bottom: 16px;
+  padding: 5px 12px;
+  font-size: 0.82rem;
+}
+
+#remote-video-card:-webkit-full-screen .video-badge,
+#local-video-card:-webkit-full-screen .video-badge {
   left: 16px;
   bottom: 16px;
   padding: 5px 12px;

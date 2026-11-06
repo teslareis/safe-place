@@ -1273,26 +1273,52 @@ GameHub.register(TumbleMatch);
       if (containerEl === screenContainer && screenMinBtn) screenMinBtn.textContent = '−';
 
       const fsEl = getFsEl();
-      if (fsEl && (fsEl === containerEl || fsEl === videoEl || containerEl.contains(fsEl))) {
-        exitFs();
-      } else if (fsEl) {
-        const p = exitFs();
-        if (p && typeof p.then === 'function') p.then(() => reqFs(containerEl, videoEl));
-        else reqFs(containerEl, videoEl);
+      const isAlreadyFs = Boolean(
+        (fsEl && (fsEl === containerEl || fsEl === videoEl || containerEl.contains(fsEl))) ||
+        containerEl.classList.contains('is-fullscreen')
+      );
+
+      if (isAlreadyFs) {
+        containerEl.classList.remove('is-fullscreen');
+        if (fsEl) exitFs();
+        syncUi();
       } else {
-        reqFs(containerEl, videoEl);
+        if (screenContainer) screenContainer.classList.remove('is-fullscreen');
+        if (remoteVideoCard) remoteVideoCard.classList.remove('is-fullscreen');
+        if (localVideoCard) localVideoCard.classList.remove('is-fullscreen');
+        containerEl.classList.add('is-fullscreen');
+        syncUi();
+
+        if (fsEl) {
+          const p = exitFs();
+          if (p && typeof p.then === 'function') p.then(() => reqFs(containerEl, videoEl));
+          else reqFs(containerEl, videoEl);
+        } else {
+          reqFs(containerEl, videoEl);
+        }
       }
     };
 
     const syncUi = () => {
       const fsEl = getFsEl();
-      const isScreenFs = Boolean(fsEl && screenContainer && (fsEl === screenContainer || screenContainer.contains(fsEl)));
-      const isRemoteFs = Boolean(fsEl && remoteVideoCard && (fsEl === remoteVideoCard || remoteVideoCard.contains(fsEl)));
-      const isLocalFs = Boolean(fsEl && localVideoCard && (fsEl === localVideoCard || localVideoCard.contains(fsEl)));
+      const videoDock = document.getElementById('video-dock');
+      const isScreenFs = Boolean(
+        (fsEl && screenContainer && (fsEl === screenContainer || screenContainer.contains(fsEl))) ||
+        (screenContainer && screenContainer.classList.contains('is-fullscreen'))
+      );
+      const isRemoteFs = Boolean(
+        (fsEl && remoteVideoCard && (fsEl === remoteVideoCard || remoteVideoCard.contains(fsEl))) ||
+        (remoteVideoCard && remoteVideoCard.classList.contains('is-fullscreen'))
+      );
+      const isLocalFs = Boolean(
+        (fsEl && localVideoCard && (fsEl === localVideoCard || localVideoCard.contains(fsEl))) ||
+        (localVideoCard && localVideoCard.classList.contains('is-fullscreen'))
+      );
 
       if (screenContainer) screenContainer.classList.toggle('is-fullscreen', isScreenFs);
       if (remoteVideoCard) remoteVideoCard.classList.toggle('is-fullscreen', isRemoteFs);
       if (localVideoCard) localVideoCard.classList.toggle('is-fullscreen', isLocalFs);
+      if (videoDock) videoDock.classList.toggle('has-fullscreen-card', isRemoteFs || isLocalFs);
 
       if (screenFsBtn) screenFsBtn.textContent = isScreenFs ? '🗗 Çıkış / Exit' : '⛶ Tam Ekran / Fullscreen';
       if (screenFsOverlayBtn) screenFsOverlayBtn.textContent = isScreenFs ? '🗗 Tam Ekrandan Çık / Exit' : '⛶ Tam Ekran / Fullscreen';
@@ -1300,9 +1326,26 @@ GameHub.register(TumbleMatch);
       if (localFsBtn) localFsBtn.textContent = isLocalFs ? '🗗 Çıkış / Exit' : '⛶ Tam Ekran';
     };
 
-    document.addEventListener('fullscreenchange', syncUi);
-    document.addEventListener('webkitfullscreenchange', syncUi);
-    document.addEventListener('MSFullscreenChange', syncUi);
+    const onNativeFsChange = () => {
+      if (!getFsEl()) {
+        if (screenContainer) screenContainer.classList.remove('is-fullscreen');
+        if (remoteVideoCard) remoteVideoCard.classList.remove('is-fullscreen');
+        if (localVideoCard) localVideoCard.classList.remove('is-fullscreen');
+      }
+      syncUi();
+    };
+
+    document.addEventListener('fullscreenchange', onNativeFsChange);
+    document.addEventListener('webkitfullscreenchange', onNativeFsChange);
+    document.addEventListener('MSFullscreenChange', onNativeFsChange);
+    window.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        if (screenContainer) screenContainer.classList.remove('is-fullscreen');
+        if (remoteVideoCard) remoteVideoCard.classList.remove('is-fullscreen');
+        if (localVideoCard) localVideoCard.classList.remove('is-fullscreen');
+        syncUi();
+      }
+    });
 
     if (screenFsBtn && screenContainer) {
       screenFsBtn.onclick = e => { e.stopPropagation(); toggleFs(screenContainer, screenVideo); };
