@@ -1,5 +1,6 @@
 /**
- * Network: the ONLY file that knows about PeerJS. Star topology.
+ * Network: the ONLY file that knows about PeerJS. Star topology for data,
+ * direct P2P MediaConnections for voice, camera, and screen sharing.
  *
  *   Host  <--->  Client A
  *     ^--------> Client B   (clients only ever talk to the host; the host relays)
@@ -11,11 +12,13 @@
  *        to = peerId -> just that player (host relays if sender is a client)
  *   net.on(channel, fn)   fn(type, payload, fromId); returns unsubscribe fn
  *   net.onEvent(name, fn) lifecycle events:
- *        'ready'(roomId)   host: room code is available
- *        'joined'()        client: connected & accepted by host
- *        'players'(list)   roster changed: [{id, name, isHost}] (host is always first)
+ *        'ready'(roomId)                   host: room code is available
+ *        'joined'()                        client: connected & accepted by host
+ *        'players'(list)                   roster changed: [{id, name, isHost}]
  *        'peerjoin'(player) / 'peerleave'(player)   host only
- *        'closed'()        client: lost the host
+ *        'remote-camera'({peerId, stream}) remote peer camera stream started/stopped
+ *        'remote-screen'({peerId, stream}) remote peer screen stream started/stopped
+ *        'closed'()                        client: lost the host
  *        'error'(err)
  * Wire format: { channel, type, payload, from?, to? }. Internal channel: '_net'.
  */
@@ -25,11 +28,16 @@ class Network {
   constructor() {
     this.handlers = {};
     this.events = {};
-    // voice chat state (survives _reset so a mic stream can be set before/after joining)
-    this.localStream = null;
-    this.calls = new Map();     // remote peerId -> MediaConnection
-    this.audios = new Map();    // remote peerId -> hidden <audio> element
-    this._knownIds = new Set(); // roster ids seen last time (to detect who left)
+    // Media streams (survive _reset so streams can be set before/after joining)
+    this.localStream = null;        // microphone audio stream
+    this.cameraStream = null;       // webcam video (+audio) stream
+    this.screenStream = null;       // display media screen-share stream
+
+    this.calls = new Map();         // remote peerId -> voice MediaConnection
+    this.cameraCalls = new Map();   // remote peerId -> outgoing/incoming camera MediaConnection
+    this.screenCalls = new Map();   // remote peerId -> outgoing/incoming screen MediaConnection
+    this.audios = new Map();        // remote peerId -> hidden <audio> element
+    this._knownIds = new Set();     // roster ids seen last time (to detect who left)
     this._silent = null;
     this._reset();
   }
@@ -90,6 +98,10 @@ class Network {
         this._emit('players', this.players);
         this._syncCalls();
         this._emit('peerjoin', player);
+      } else if (msg.type === 'media-state' && this.conns.has(from)) {
+        const stateMsg = { channel: '_net', type: 'media-state', payload: { ...(msg.payload || {}), peerId: from } };
+        this._handleMediaState(stateMsg.payload);
+        this.conns.forEach((c, id) => { if (id !== from && c.open) c.send(stateMsg); });
       }
       return;
     }
@@ -116,14 +128,14 @@ class Network {
     this.players = this.players.filter(p => p.id !== id);
     this._broadcastRoster();
     this._emit('players', this.players);
-    this._syncCalls();                      // destroys that player's call + <audio>
+    this._syncCalls();                      // destroys that player's calls + <audio>/<video>
     if (player) this._emit('peerleave', player);
   }
 
   /**
    * Host only: remove a player from the room.
    * Tells them ({ channel:'_net', type:'kick' }), removes them from the roster and
-   * voice immediately, then force-closes their data connection.
+   * voice/video immediately, then force-closes their data connection.
    */
   kick(peerId) {
     if (!this.isHost || peerId === this.myId) return;       // never the host itself
@@ -132,19 +144,15 @@ class Network {
 
     try { conn.send({ channel: '_net', type: 'kick' }); } catch (e) {}
 
-    // Remove from the active list first, so the later 'close' event is ignored by _hostDrop
-    // and anything they still send is dropped as coming from a stranger.
     this.conns.delete(peerId);
     const player = this.players.find(p => p.id === peerId);
     this.players = this.players.filter(p => p.id !== peerId);
-    this._dropVoice(peerId);                                // media call + <audio> element
-    this._broadcastRoster();                                // everyone else sees the new list
+    this._dropPeerMedia(peerId);
+    this._broadcastRoster();
     this._emit('players', this.players);
     this._syncCalls();
     if (player) this._emit('peerleave', player);
 
-    // Force-close the data connection. Tiny delay so the 'kick' message is flushed
-    // before the channel goes down (the client also closes itself when it receives it).
     setTimeout(() => { try { conn.close(); } catch (e) {} }, 150);
   }
 
@@ -182,7 +190,7 @@ class Network {
   _clientOnData(msg) {
     if (!msg) return;
     if (msg.type === 'kick') {
-      this._left = true; // we are being removed: suppress the generic 'closed' event
+      this._left = true;
       this._emit('kicked');
       return;
     }
@@ -193,8 +201,10 @@ class Network {
         if (!this._joined) { this._joined = true; this._emit('joined'); }
         this._emit('players', this.players);
         this._syncCalls();
+      } else if (msg.type === 'media-state') {
+        this._handleMediaState(msg.payload);
       } else if (msg.type === 'full') {
-        this._left = true; // suppress 'closed'
+        this._left = true;
         this._emit('error', { type: 'room-full' });
       }
       return;
@@ -232,22 +242,126 @@ class Network {
     (this.handlers[msg.channel] || []).forEach(fn => fn(msg.type, msg.payload, msg.from));
   }
 
-  // ================= Voice chat (direct P2P media calls) =================
-  // Data uses the star topology, but voice is a full mesh: every pair of players
-  // gets ONE direct MediaConnection. To avoid both sides calling each other at
-  // the same time, only the player with the smaller peer id initiates the call;
-  // the other side answers (peer.on('call')).
+  // ================= Voice, Camera & Screen Media Streaming =================
 
   /** Give Network the microphone stream (or null to stop transmitting). */
   setLocalStream(stream) {
     this.localStream = stream || null;
-    // Calls that already exist (opened before the mic was ready) get the real track swapped in
     const track = this.localStream && this.localStream.getAudioTracks()[0];
-    this.calls.forEach(call => this._swapOutgoingTrack(call, track || this._silentTrack()));
+    this.calls.forEach(call => this._swapOutgoingTrack(call, track || this._silentTrack(), 'audio'));
     this._syncCalls();
   }
 
-  /** Stream to hand to peer.call()/answer(): the mic, or silence (so we can still HEAR others). */
+  /**
+   * Give Network the local camera stream (from getUserMedia({ video: true, audio: true }))
+   * or null when turning the camera off.
+   * Uses PeerJS `peer.call(remotePeerId, localStream)` to transmit to all peers.
+   */
+  setCameraStream(stream) {
+    this.cameraStream = stream || null;
+    if (!this.cameraStream) {
+      this.cameraCalls.forEach(call => { try { call.close(); } catch (e) {} });
+      this.cameraCalls.clear();
+      this._broadcastMediaState({ cam: false });
+      return;
+    }
+
+    // If a local audio track exists in cameraStream, also keep voice calls synced
+    const audioTrack = this.cameraStream.getAudioTracks()[0];
+    if (audioTrack && !this.localStream) {
+      this.calls.forEach(call => this._swapOutgoingTrack(call, audioTrack, 'audio'));
+    }
+
+    // Transmit camera stream to all peers in the room via peer.call(remotePeerId, stream)
+    const videoTrack = this.cameraStream.getVideoTracks()[0];
+    this._remotePeerIds().forEach(peerId => {
+      const existing = this.cameraCalls.get(peerId);
+      if (existing && existing.peerConnection && videoTrack) {
+        this._swapOutgoingTrack(existing, videoTrack, 'video');
+      } else {
+        this._callPeerCamera(peerId);
+      }
+    });
+    this._broadcastMediaState({ cam: true });
+  }
+
+  /**
+   * Give Network the local screen-share stream (from getDisplayMedia({ video: true }))
+   * or null when screen sharing ends.
+   * Transmits via PeerJS `peer.call(remotePeerId, screenStream)` and supports track replacement.
+   */
+  setScreenStream(stream) {
+    this.screenStream = stream || null;
+    if (!this.screenStream) {
+      this.screenCalls.forEach(call => { try { call.close(); } catch (e) {} });
+      this.screenCalls.clear();
+      // If camera is still active, ensure camera video track is restored on any shared connection
+      const camVideoTrack = this.cameraStream && this.cameraStream.getVideoTracks()[0];
+      if (camVideoTrack) {
+        this.cameraCalls.forEach(call => this._swapOutgoingTrack(call, camVideoTrack, 'video'));
+      }
+      this._broadcastMediaState({ screen: false });
+      return;
+    }
+
+    const screenTrack = this.screenStream.getVideoTracks()[0];
+    this._remotePeerIds().forEach(peerId => {
+      const existing = this.screenCalls.get(peerId);
+      if (existing && existing.peerConnection && screenTrack) {
+        this._swapOutgoingTrack(existing, screenTrack, 'video');
+      } else {
+        this._callPeerScreen(peerId);
+      }
+    });
+    this._broadcastMediaState({ screen: true });
+  }
+
+  /** Replace the outgoing video track across active video calls (camera <-> screen). */
+  replaceVideoTrack(videoTrack) {
+    if (!videoTrack) return;
+    this.cameraCalls.forEach(call => this._swapOutgoingTrack(call, videoTrack, 'video'));
+    this.screenCalls.forEach(call => this._swapOutgoingTrack(call, videoTrack, 'video'));
+  }
+
+  _remotePeerIds() {
+    if (!this.myId) return [];
+    return this.players.map(p => p.id).filter(id => id && id !== this.myId);
+  }
+
+  _broadcastMediaState(state) {
+    if (!this.myId) return;
+    const payload = { ...state, peerId: this.myId };
+    if (this.isHost) {
+      const msg = { channel: '_net', type: 'media-state', payload };
+      this.conns.forEach(c => c.open && c.send(msg));
+    } else if (this.hostConn && this.hostConn.open) {
+      this.hostConn.send({ channel: '_net', type: 'media-state', payload });
+    }
+  }
+
+  _handleMediaState(payload) {
+    if (!payload || !payload.peerId || payload.peerId === this.myId) return;
+    const peerId = payload.peerId;
+    if (payload.cam === false) {
+      const call = this.cameraCalls.get(peerId);
+      if (call) {
+        this.cameraCalls.delete(peerId);
+        try { call.close(); } catch (e) {}
+      }
+      this.setPeerAudioMuted(peerId, false);
+      this._emit('remote-camera', { peerId, stream: null });
+    }
+    if (payload.screen === false) {
+      const call = this.screenCalls.get(peerId);
+      if (call) {
+        this.screenCalls.delete(peerId);
+        try { call.close(); } catch (e) {}
+      }
+      this._emit('remote-screen', { peerId, stream: null });
+    }
+  }
+
+  /** Stream to hand to voice peer.call()/answer(): the mic, or silence (so we can still HEAR others). */
   _currentStream() { return this.localStream || this._silentStream(); }
 
   _silentStream() {
@@ -261,43 +375,162 @@ class Network {
 
   _silentTrack() { return this._silentStream().getAudioTracks()[0]; }
 
-  _swapOutgoingTrack(call, track) {
-    const pc = call.peerConnection;
+  _swapOutgoingTrack(call, track, kind = 'audio') {
+    const pc = call && call.peerConnection;
     if (!pc || !track) return;
-    const t = pc.getTransceivers().find(t => t.receiver && t.receiver.track && t.receiver.track.kind === 'audio');
+    const senders = typeof pc.getSenders === 'function' ? pc.getSenders() : [];
+    const sender = senders.find(s => s && s.track && s.track.kind === kind);
+    if (sender) {
+      sender.replaceTrack(track).catch(() => {});
+      return;
+    }
+    const transceivers = typeof pc.getTransceivers === 'function' ? pc.getTransceivers() : [];
+    const t = transceivers.find(tr => tr.receiver && tr.receiver.track && tr.receiver.track.kind === kind);
     if (t && t.sender) t.sender.replaceTrack(track).catch(() => {});
   }
 
-  /** Start missing calls, and tear down voice for players that left the roster. */
+  /** Start missing calls, and tear down voice/video for players that left the roster. */
   _syncCalls() {
     if (!this.peer || !this.myId) return;
-    const now = new Set(this.players.map(p => p.id).filter(id => id !== this.myId));
+    const now = new Set(this._remotePeerIds());
 
-    // Players who were in the roster before and are gone now -> destroy their call + <audio>
-    this._knownIds.forEach(id => { if (!now.has(id)) this._dropVoice(id); });
+    // Players who were in the roster before and are gone now -> destroy their media calls
+    this._knownIds.forEach(id => { if (!now.has(id)) this._dropPeerMedia(id); });
     this._knownIds = now;
 
     now.forEach(id => {
-      if (this.calls.has(id) || !(this.myId < id)) return;   // exists, or the other side initiates
-      try {
-        const call = this.peer.call(id, this._currentStream());
-        if (call) this._wireCall(call);
-      } catch (e) { console.warn('Voice call failed:', e); }
+      // 1. Voice mesh call (smaller peer ID initiates)
+      if (!this.calls.has(id) && this.myId < id) {
+        try {
+          const call = this.peer.call(id, this._currentStream(), { metadata: { kind: 'voice', from: this.myId } });
+          if (call) this._wireVoiceCall(call);
+        } catch (e) { console.warn('Voice call failed:', e); }
+      }
+      // 2. If our camera is currently active, transmit it to newly joined peer
+      if (this.cameraStream && !this.cameraCalls.has(id)) {
+        this._callPeerCamera(id);
+      }
+      // 3. If our screen share is currently active, transmit it to newly joined peer
+      if (this.screenStream && !this.screenCalls.has(id)) {
+        this._callPeerScreen(id);
+      }
     });
   }
 
-  _onIncomingCall(call) {
-    call.answer(this._currentStream());      // answers even without a mic (receive-only)
-    this._wireCall(call);
+  _callPeerCamera(peerId) {
+    if (!this.peer || !this.cameraStream || !peerId || peerId === this.myId) return;
+    try {
+      const call = this.peer.call(peerId, this.cameraStream, {
+        metadata: { kind: 'camera', from: this.myId },
+      });
+      if (call) this._wireCameraCall(call);
+    } catch (e) {
+      console.warn('Camera call failed:', e);
+    }
   }
 
-  _wireCall(call) {
+  _callPeerScreen(peerId) {
+    if (!this.peer || !this.screenStream || !peerId || peerId === this.myId) return;
+    try {
+      const call = this.peer.call(peerId, this.screenStream, {
+        metadata: { kind: 'screen', from: this.myId },
+      });
+      if (call) this._wireScreenCall(call);
+    } catch (e) {
+      console.warn('Screen share call failed:', e);
+    }
+  }
+
+  _onIncomingCall(call) {
+    const kind = (call && call.metadata && call.metadata.kind) || 'voice';
+
+    if (kind === 'screen') {
+      try { call.answer(); } catch (e) { call.answer(this._silentStream()); }
+      this._wireScreenCall(call);
+      return;
+    }
+
+    if (kind === 'camera') {
+      // Answer with our own camera stream if active, or silent audio stream so two-way negotiation succeeds
+      call.answer(this.cameraStream || this._currentStream());
+      this._wireCameraCall(call);
+      return;
+    }
+
+    // Default / voice call (also supports generic peer.call(remotePeerId, localStream) with video+audio)
+    call.answer(this.cameraStream || this._currentStream());
+    this._wireVoiceCall(call);
+  }
+
+  _wireVoiceCall(call) {
     const id = call.peer;
-    if (this.calls.has(id) && this.calls.get(id) !== call) this._dropVoice(id); // replace stale call
+    if (this.calls.has(id) && this.calls.get(id) !== call) this._dropVoice(id);
     this.calls.set(id, call);
-    call.on('stream', remote => this._attachAudio(id, remote));
+    call.on('stream', remote => {
+      if (remote.getAudioTracks().length > 0) this._attachAudio(id, remote);
+      if (remote.getVideoTracks().length > 0) {
+        this._emit('remote-camera', { peerId: id, stream: remote });
+      }
+    });
     call.on('close', () => { if (this.calls.get(id) === call) this._dropVoice(id); });
     call.on('error', () => { if (this.calls.get(id) === call) this._dropVoice(id); });
+  }
+
+  _wireCameraCall(call) {
+    const id = call.peer;
+    const prev = this.cameraCalls.get(id);
+    if (prev && prev !== call) {
+      try { prev.close(); } catch (e) {}
+    }
+    this.cameraCalls.set(id, call);
+
+    call.on('stream', remote => {
+      if (remote && remote.getVideoTracks().length > 0) {
+        // If remote camera stream also carries audio and we don't have a voice <audio>, attach audio
+        if (remote.getAudioTracks().length > 0 && !this.audios.has(id)) {
+          this._attachAudio(id, remote);
+        }
+        this._emit('remote-camera', { peerId: id, stream: remote });
+      }
+    });
+    const cleanup = () => {
+      if (this.cameraCalls.get(id) === call) {
+        this.cameraCalls.delete(id);
+        this.setPeerAudioMuted(id, false);
+        this._emit('remote-camera', { peerId: id, stream: null });
+      }
+    };
+    call.on('close', cleanup);
+    call.on('error', cleanup);
+  }
+
+  _wireScreenCall(call) {
+    const id = call.peer;
+    const prev = this.screenCalls.get(id);
+    if (prev && prev !== call) {
+      try { prev.close(); } catch (e) {}
+    }
+    this.screenCalls.set(id, call);
+
+    call.on('stream', remote => {
+      if (remote && remote.getVideoTracks().length > 0) {
+        const vt = remote.getVideoTracks()[0];
+        if (vt) {
+          vt.addEventListener('ended', () => {
+            this._emit('remote-screen', { peerId: id, stream: null });
+          });
+        }
+        this._emit('remote-screen', { peerId: id, stream: remote });
+      }
+    });
+    const cleanup = () => {
+      if (this.screenCalls.get(id) === call) {
+        this.screenCalls.delete(id);
+        this._emit('remote-screen', { peerId: id, stream: null });
+      }
+    };
+    call.on('close', cleanup);
+    call.on('error', cleanup);
   }
 
   /** One hidden <audio autoplay> per remote player, keyed by their peer id. */
@@ -315,10 +548,16 @@ class Network {
     }
     el.srcObject = stream;
     const p = el.play();
-    if (p && p.catch) p.catch(() => {});     // autoplay may need a user gesture; the next click resumes it
+    if (p && p.catch) p.catch(() => {});
   }
 
-  /** Close the call and remove that player's <audio> element (no ghost elements). */
+  /** Mute/unmute the hidden <audio> for a peer (used to prevent duplicate audio when <video> plays audio). */
+  setPeerAudioMuted(id, muted) {
+    const el = this.audios.get(id);
+    if (el) el.muted = Boolean(muted);
+  }
+
+  /** Close the voice call and remove that player's <audio> element (no ghost elements). */
   _dropVoice(id) {
     const call = this.calls.get(id);
     this.calls.delete(id);
@@ -328,8 +567,32 @@ class Network {
     this.audios.delete(id);
   }
 
+  /** Close voice, camera, and screen calls for a specific peer. */
+  _dropPeerMedia(id) {
+    this._dropVoice(id);
+    const camCall = this.cameraCalls.get(id);
+    if (camCall) {
+      this.cameraCalls.delete(id);
+      try { camCall.close(); } catch (e) {}
+    }
+    this._emit('remote-camera', { peerId: id, stream: null });
+
+    const scrCall = this.screenCalls.get(id);
+    if (scrCall) {
+      this.screenCalls.delete(id);
+      try { scrCall.close(); } catch (e) {}
+    }
+    this._emit('remote-screen', { peerId: id, stream: null });
+  }
+
   _dropAllVoice() {
-    [...new Set([...this.calls.keys(), ...this.audios.keys()])].forEach(id => this._dropVoice(id));
+    const allIds = new Set([
+      ...this.calls.keys(),
+      ...this.cameraCalls.keys(),
+      ...this.screenCalls.keys(),
+      ...this.audios.keys(),
+    ]);
+    allIds.forEach(id => this._dropPeerMedia(id));
     this._knownIds = new Set();
   }
 

@@ -129,13 +129,46 @@ body.in-game .game-container {
   overflow: hidden;
 }
 
-/* ===== Voice chat mic button ===== */
-.side-actions { display: flex; gap: 8px; align-items: center; }
-.mic-btn { min-width: 112px; }
-.mic-btn--on { color: var(--ok); border-color: #3ddc9766; background: #3ddc971a; }
+/* ===== Top control bar: Voice Mic, Live Cam, Screen Share & Leave buttons ===== */
+.side-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 100%;
+  align-items: center;
+}
+.side-actions .btn {
+  padding: 8px 10px;
+  font-size: .82rem;
+  white-space: nowrap;
+  text-align: center;
+}
+body.in-game .side-actions {
+  display: flex;
+  flex-wrap: wrap;
+  width: auto;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.mic-btn,
+.cam-btn,
+.screen-btn { min-width: 96px; }
+
+.mic-btn--on { color: var(--ok); border-color: #3ddc9766; background: #3ddc971a; box-shadow: 0 0 10px rgba(61, 220, 151, 0.2); }
 .mic-btn--off { color: var(--muted); }
 .mic-btn--blocked, .mic-btn--na { color: #ffc857; border-color: #ffc85766; }
-body.in-game .mic-btn { padding: 5px 10px; font-size: .82rem; }
+
+.cam-btn--on { color: #6c8cff; border-color: #6c8cff88; background: rgba(108, 140, 255, 0.16); box-shadow: 0 0 12px rgba(108, 140, 255, 0.3); }
+.cam-btn--off { color: var(--muted); }
+.cam-btn--blocked, .cam-btn--na { color: #ffc857; border-color: #ffc85766; }
+
+.screen-btn--on { color: #ff5c8a; border-color: #ff5c8a88; background: rgba(255, 92, 138, 0.16); box-shadow: 0 0 12px rgba(255, 92, 138, 0.32); }
+.screen-btn--off { color: var(--text); border-color: #6c8cff44; }
+.screen-btn--blocked, .screen-btn--na { color: #ffc857; border-color: #ffc85766; }
+
+body.in-game .mic-btn,
+body.in-game .cam-btn,
+body.in-game .screen-btn { padding: 5px 10px; font-size: .8rem; min-width: 88px; }
 
 /* ===== Host: kick button in the player list ===== */
 .kick-btn { margin-left: auto; cursor: pointer; background: transparent; color: var(--danger); border: 1px solid #ff5c5c55; border-radius: 6px; padding: 2px 8px; font-size: .72rem; font-weight: 600; }
@@ -1254,3 +1287,501 @@ body.in-game .mic-btn { padding: 5px 10px; font-size: .82rem; }
   0% { transform: translateY(-2px) scale(1.04); }
   100% { transform: translateY(-6px) scale(1.12); }
 }
+
+/* =====================================================================
+   LIVE CAMERA DOCK (#video-dock, #local-video, #remote-video)
+   & SCREEN SHARE VIEWER (#screen-share-container, #screen-video)
+   Strictly bounded with max-width, max-height, and object-fit
+   ===================================================================== */
+
+/* Floating / Side-Anchored Interactive Camera Dock */
+.video-dock {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: rgba(15, 20, 35, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(108, 140, 255, 0.48);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.65), 0 0 18px rgba(108, 140, 255, 0.22);
+  max-width: min(360px, 94vw);
+  max-height: min(320px, 48vh);
+  box-sizing: border-box;
+  overflow: hidden;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.video-dock.pos-br { right: 12px; bottom: 12px; left: auto; top: auto; }
+.video-dock.pos-bl { left: 12px; bottom: 12px; right: auto; top: auto; }
+.video-dock.pos-tr { right: 12px; top: 64px; left: auto; bottom: auto; }
+
+.video-dock-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+
+.video-dock-title {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #bcd2ff;
+}
+
+.video-dock-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.video-dock-btn {
+  cursor: pointer;
+  background: rgba(34, 38, 51, 0.85);
+  color: #e8eaf0;
+  border: 1px solid rgba(108, 140, 255, 0.4);
+  border-radius: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.video-dock-btn:hover {
+  background: rgba(108, 140, 255, 0.28);
+  border-color: #6c8cff;
+}
+
+.video-dock-body {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.video-dock.video-dock--minimized .video-dock-body {
+  display: none !important;
+}
+
+.video-card {
+  position: relative;
+  width: clamp(118px, 14vw, 160px) !important;
+  height: clamp(88px, 10.5vw, 120px) !important;
+  max-width: 160px !important;
+  max-height: 120px !important;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: #070a12;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.video-card--local {
+  border: 2px solid #6c8cff;
+  box-shadow: 0 0 14px rgba(108, 140, 255, 0.45), inset 0 0 8px rgba(108, 140, 255, 0.2);
+}
+
+.video-card--remote {
+  border: 2px solid #ff5c8a;
+  box-shadow: 0 0 14px rgba(255, 92, 138, 0.45), inset 0 0 8px rgba(255, 92, 138, 0.2);
+}
+
+#local-video,
+#remote-video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 160px !important;
+  max-height: 120px !important;
+  object-fit: cover !important;
+  display: block;
+  background: #070a12;
+  border-radius: 8px;
+}
+
+/* Mirror local webcam preview for natural self-view */
+#local-video {
+  transform: scaleX(-1);
+}
+
+/* Dedicated 'Tam Ekran / Fullscreen' Button on Video & Screen Containers */
+.video-fs-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 6;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: rgba(9, 13, 24, 0.86);
+  backdrop-filter: blur(6px);
+  color: #ffffff;
+  border: 1px solid rgba(108, 140, 255, 0.65);
+  font-size: 0.64rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.65);
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+.video-fs-btn:hover {
+  background: linear-gradient(135deg, #6c8cff, #ff5c8a);
+  border-color: #ffffff;
+  transform: scale(1.04);
+}
+.video-fs-btn:active {
+  transform: scale(0.96);
+}
+
+.screen-fs-overlay-btn {
+  top: auto;
+  bottom: 10px;
+  right: 10px;
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  border-color: rgba(255, 92, 138, 0.75);
+  opacity: 0.88;
+}
+.screen-share-body:hover .screen-fs-overlay-btn {
+  opacity: 1;
+}
+
+.video-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(9, 12, 22, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  max-width: calc(100% - 12px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.video-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.video-dot--local {
+  background: #6c8cff;
+  box-shadow: 0 0 6px #6c8cff;
+}
+.video-dot--remote {
+  background: #ff5c8a;
+  box-shadow: 0 0 6px #ff5c8a;
+}
+
+/* Dedicated Screen-Share Display Container (Strictly Bounded in Windowed Mode) */
+.screen-share-container {
+  position: fixed;
+  left: 12px;
+  top: 64px;
+  z-index: 88;
+  width: clamp(300px, 38vw, 480px);
+  height: clamp(200px, 32vh, 310px);
+  max-width: min(480px, 92vw);
+  max-height: min(310px, 46vh);
+  display: flex;
+  flex-direction: column;
+  background: rgba(11, 15, 27, 0.95);
+  backdrop-filter: blur(10px);
+  border: 2px solid #ff5c8a;
+  border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.78), 0 0 22px rgba(255, 92, 138, 0.35);
+  overflow: hidden;
+  box-sizing: border-box;
+  transition: width 0.22s ease, height 0.22s ease, left 0.22s ease, top 0.22s ease;
+}
+
+/* Theater / Expanded Mode for Screen Share */
+.screen-share-container.screen-share--expanded {
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  width: min(88vw, 960px);
+  height: min(76vh, 620px);
+  max-width: 92vw;
+  max-height: 80vh;
+  z-index: 95;
+}
+
+/* Minimized Mode for Screen Share */
+.screen-share-container.screen-share--minimized {
+  height: auto !important;
+  max-height: 40px !important;
+  width: clamp(220px, 26vw, 310px);
+}
+.screen-share-container.screen-share--minimized .screen-share-body {
+  display: none !important;
+}
+
+.screen-share-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: linear-gradient(90deg, rgba(255, 92, 138, 0.18), rgba(108, 140, 255, 0.14));
+  border-bottom: 1px solid rgba(255, 92, 138, 0.35);
+  flex-shrink: 0;
+}
+
+.screen-share-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  color: #ffe4ee;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.screen-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff5c8a;
+  box-shadow: 0 0 8px #ff5c8a;
+  flex-shrink: 0;
+  animation: screenPulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes screenPulse {
+  0% { opacity: 0.55; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1.15); }
+}
+
+.screen-share-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.screen-ctrl-btn {
+  cursor: pointer;
+  background: rgba(24, 27, 36, 0.9);
+  color: #e8eaf0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.1;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+.screen-ctrl-btn:hover {
+  border-color: #6c8cff;
+  background: rgba(108, 140, 255, 0.22);
+}
+.screen-ctrl-btn--fullscreen {
+  background: linear-gradient(135deg, #2563eb, #db2777);
+  border-color: #93c5fd;
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: 0 0 10px rgba(219, 39, 119, 0.35);
+}
+.screen-ctrl-btn--fullscreen:hover {
+  border-color: #ffffff;
+  background: linear-gradient(135deg, #3b82f6, #ec4899);
+  filter: brightness(1.1);
+}
+.screen-ctrl-btn--danger {
+  color: #ff7b7b;
+  border-color: rgba(255, 92, 92, 0.45);
+}
+.screen-ctrl-btn--danger:hover {
+  background: rgba(255, 92, 92, 0.22);
+  border-color: #ff5c5c;
+}
+
+.screen-share-body {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #05070d;
+  overflow: hidden;
+}
+
+#screen-video {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  display: block;
+  background: #05070d;
+}
+
+/* =====================================================================
+   NATIVE FULLSCREEN MODE (:fullscreen / :-webkit-full-screen / .is-fullscreen)
+   Smoothly expands Screen-Share & Video Feeds to 100% viewport with crisp
+   object-fit: contain scaling and zero distortion.
+   ===================================================================== */
+#screen-share-container:fullscreen,
+#screen-share-container:-webkit-full-screen,
+#screen-share-container.is-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  transform: none !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: #000000 !important;
+  box-shadow: none !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+#screen-share-container:fullscreen .screen-share-body,
+#screen-share-container:-webkit-full-screen .screen-share-body,
+#screen-share-container.is-fullscreen .screen-share-body,
+.screen-share-body:fullscreen,
+.screen-share-body:-webkit-full-screen {
+  flex: 1 1 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  background: #000000 !important;
+}
+
+#screen-share-container:fullscreen #screen-video,
+#screen-share-container:-webkit-full-screen #screen-video,
+#screen-share-container.is-fullscreen #screen-video,
+.screen-share-body:fullscreen #screen-video,
+.screen-share-body:-webkit-full-screen #screen-video,
+#screen-video:fullscreen,
+#screen-video:-webkit-full-screen {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  background: #000000 !important;
+  border-radius: 0 !important;
+}
+
+#remote-video-card:fullscreen,
+#remote-video-card:-webkit-full-screen,
+#remote-video-card.is-fullscreen,
+#local-video-card:fullscreen,
+#local-video-card:-webkit-full-screen,
+#local-video-card.is-fullscreen,
+.video-card:fullscreen,
+.video-card:-webkit-full-screen {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: #000000 !important;
+  box-shadow: none !important;
+  z-index: 2147483647 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+#remote-video-card:fullscreen #remote-video,
+#remote-video-card:-webkit-full-screen #remote-video,
+#remote-video-card.is-fullscreen #remote-video,
+#local-video-card:fullscreen #local-video,
+#local-video-card:-webkit-full-screen #local-video,
+#local-video-card.is-fullscreen #local-video,
+.video-card:fullscreen video,
+.video-card:-webkit-full-screen video,
+#remote-video:fullscreen,
+#remote-video:-webkit-full-screen,
+#local-video:fullscreen,
+#local-video:-webkit-full-screen {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  background: #000000 !important;
+  border-radius: 0 !important;
+}
+
+#remote-video-card:fullscreen .video-fs-btn,
+#remote-video-card:-webkit-full-screen .video-fs-btn,
+#remote-video-card.is-fullscreen .video-fs-btn,
+#local-video-card:fullscreen .video-fs-btn,
+#local-video-card:-webkit-full-screen .video-fs-btn,
+#local-video-card.is-fullscreen .video-fs-btn {
+  top: 16px;
+  right: 16px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+}
+
+#remote-video-card:fullscreen .video-badge,
+#remote-video-card:-webkit-full-screen .video-badge,
+#remote-video-card.is-fullscreen .video-badge,
+#local-video-card:fullscreen .video-badge,
+#local-video-card:-webkit-full-screen .video-badge,
+#local-video-card.is-fullscreen .video-badge {
+  left: 16px;
+  bottom: 16px;
+  padding: 5px 12px;
+  font-size: 0.82rem;
+}
+
+

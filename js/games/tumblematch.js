@@ -1207,3 +1207,129 @@ const TumbleMatch = {
 };
 
 GameHub.register(TumbleMatch);
+
+// =====================================================================
+// Idempotent Native Fullscreen Toggle Binder for Screen-Share & Video Feeds
+// (Ensures Fullscreen buttons work whether initialized here or in main.js)
+// =====================================================================
+(function initSafePlaceFullscreen() {
+  function bindFullscreenControls() {
+    if (window.__safePlaceFullscreenInit) return;
+    const screenContainer = document.getElementById('screen-share-container');
+    const screenVideo = document.getElementById('screen-video');
+    const screenFsBtn = document.getElementById('btn-screen-fullscreen');
+    const screenFsOverlayBtn = document.getElementById('btn-screen-fs-overlay');
+    const screenMinBtn = document.getElementById('btn-screen-min');
+    const remoteVideoCard = document.getElementById('remote-video-card');
+    const remoteVideo = document.getElementById('remote-video');
+    const remoteFsBtn = document.getElementById('btn-remote-fullscreen');
+    const localVideoCard = document.getElementById('local-video-card');
+    const localVideo = document.getElementById('local-video');
+    const localFsBtn = document.getElementById('btn-local-fullscreen');
+
+    if (!screenContainer && !remoteVideoCard) return;
+    window.__safePlaceFullscreenInit = true;
+
+    const getFsEl = () =>
+      document.fullscreenElement ||
+      document.webkitFullscreenElement ||
+      document.mozFullScreenElement ||
+      document.msFullscreenElement ||
+      null;
+
+    const exitFs = () => {
+      if (document.exitFullscreen) return document.exitFullscreen().catch(() => {});
+      if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+      if (document.mozCancelFullScreen) return document.mozCancelFullScreen();
+      if (document.msExitFullscreen) return document.msExitFullscreen();
+    };
+
+    const reqFs = (targetEl, fallbackVideoEl) => {
+      if (!targetEl) return;
+      const fn =
+        targetEl.requestFullscreen ||
+        targetEl.webkitRequestFullscreen ||
+        targetEl.mozRequestFullScreen ||
+        targetEl.msRequestFullscreen;
+      if (fn) {
+        try {
+          const p = fn.call(targetEl);
+          if (p && typeof p.catch === 'function') {
+            p.catch(() => {
+              if (fallbackVideoEl && fallbackVideoEl !== targetEl) reqFs(fallbackVideoEl, null);
+            });
+          }
+          return;
+        } catch (e) {}
+      }
+      if (fallbackVideoEl && typeof fallbackVideoEl.webkitEnterFullscreen === 'function') {
+        try { fallbackVideoEl.webkitEnterFullscreen(); } catch (e) {}
+      }
+    };
+
+    const toggleFs = (containerEl, videoEl) => {
+      if (!containerEl) return;
+      containerEl.classList.remove('screen-share--minimized', 'video-dock--minimized');
+      if (containerEl === screenContainer && screenMinBtn) screenMinBtn.textContent = '−';
+
+      const fsEl = getFsEl();
+      if (fsEl && (fsEl === containerEl || fsEl === videoEl || containerEl.contains(fsEl))) {
+        exitFs();
+      } else if (fsEl) {
+        const p = exitFs();
+        if (p && typeof p.then === 'function') p.then(() => reqFs(containerEl, videoEl));
+        else reqFs(containerEl, videoEl);
+      } else {
+        reqFs(containerEl, videoEl);
+      }
+    };
+
+    const syncUi = () => {
+      const fsEl = getFsEl();
+      const isScreenFs = Boolean(fsEl && screenContainer && (fsEl === screenContainer || screenContainer.contains(fsEl)));
+      const isRemoteFs = Boolean(fsEl && remoteVideoCard && (fsEl === remoteVideoCard || remoteVideoCard.contains(fsEl)));
+      const isLocalFs = Boolean(fsEl && localVideoCard && (fsEl === localVideoCard || localVideoCard.contains(fsEl)));
+
+      if (screenContainer) screenContainer.classList.toggle('is-fullscreen', isScreenFs);
+      if (remoteVideoCard) remoteVideoCard.classList.toggle('is-fullscreen', isRemoteFs);
+      if (localVideoCard) localVideoCard.classList.toggle('is-fullscreen', isLocalFs);
+
+      if (screenFsBtn) screenFsBtn.textContent = isScreenFs ? '🗗 Çıkış / Exit' : '⛶ Tam Ekran / Fullscreen';
+      if (screenFsOverlayBtn) screenFsOverlayBtn.textContent = isScreenFs ? '🗗 Tam Ekrandan Çık / Exit' : '⛶ Tam Ekran / Fullscreen';
+      if (remoteFsBtn) remoteFsBtn.textContent = isRemoteFs ? '🗗 Çıkış / Exit' : '⛶ Tam Ekran';
+      if (localFsBtn) localFsBtn.textContent = isLocalFs ? '🗗 Çıkış / Exit' : '⛶ Tam Ekran';
+    };
+
+    document.addEventListener('fullscreenchange', syncUi);
+    document.addEventListener('webkitfullscreenchange', syncUi);
+    document.addEventListener('MSFullscreenChange', syncUi);
+
+    if (screenFsBtn && screenContainer) {
+      screenFsBtn.onclick = e => { e.stopPropagation(); toggleFs(screenContainer, screenVideo); };
+    }
+    if (screenFsOverlayBtn && screenContainer) {
+      screenFsOverlayBtn.onclick = e => { e.stopPropagation(); toggleFs(screenContainer, screenVideo); };
+    }
+    if (screenVideo && screenContainer) {
+      screenVideo.ondblclick = () => toggleFs(screenContainer, screenVideo);
+    }
+    if (remoteFsBtn && remoteVideoCard) {
+      remoteFsBtn.onclick = e => { e.stopPropagation(); toggleFs(remoteVideoCard, remoteVideo); };
+    }
+    if (remoteVideo && remoteVideoCard) {
+      remoteVideo.ondblclick = () => toggleFs(remoteVideoCard, remoteVideo);
+    }
+    if (localFsBtn && localVideoCard) {
+      localFsBtn.onclick = e => { e.stopPropagation(); toggleFs(localVideoCard, localVideo); };
+    }
+    if (localVideo && localVideoCard) {
+      localVideo.ondblclick = () => toggleFs(localVideoCard, localVideo);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindFullscreenControls);
+  } else {
+    bindFullscreenControls();
+  }
+})();

@@ -44,6 +44,8 @@
             <button id="btn-side-toggle" class="btn btn--ghost side-toggle" title="Room info &amp; players">☰ <span id="side-count">0</span> 👥</button>
             <div class="side-actions">
               <button id="btn-mic" class="btn mic-btn mic-btn--off" title="Mute / unmute your microphone">Mic: Off</button>
+              <button id="btn-cam" class="btn cam-btn cam-btn--off" title="Turn your camera on or off">Cam: Off</button>
+              <button id="btn-screen" class="btn screen-btn screen-btn--off" title="Share your screen with the room">Share Screen</button>
               <button id="btn-leave" class="btn btn--danger">Leave Room</button>
             </div>
           </div>
@@ -67,6 +69,55 @@
           <div id="game-container" class="game-container"></div>
         </div>
       </div>
+
+      <!-- Dedicated Screen-Share Display Container (Strictly Bounded) -->
+      <aside id="screen-share-container" class="screen-share-container hidden" aria-label="Screen Share Viewer">
+        <div class="screen-share-header">
+          <div class="screen-share-title">
+            <span class="screen-live-dot"></span>
+            <span id="screen-share-label">Screen Share — Live</span>
+          </div>
+          <div class="screen-share-actions">
+            <button id="btn-screen-fullscreen" type="button" class="screen-ctrl-btn screen-ctrl-btn--fullscreen" title="Tam Ekran / Fullscreen">⛶ Tam Ekran / Fullscreen</button>
+            <button id="btn-screen-size" type="button" class="screen-ctrl-btn" title="Toggle theater / compact size">⛶ Expand</button>
+            <button id="btn-screen-min" type="button" class="screen-ctrl-btn" title="Minimize / restore screen view">−</button>
+            <button id="btn-screen-stop" type="button" class="screen-ctrl-btn screen-ctrl-btn--danger hidden" title="Stop sharing your screen">■ Stop</button>
+          </div>
+        </div>
+        <div class="screen-share-body">
+          <video id="screen-video" autoplay playsinline></video>
+          <button id="btn-screen-fs-overlay" type="button" class="video-fs-btn screen-fs-overlay-btn" title="Tam Ekran / Fullscreen">⛶ Tam Ekran / Fullscreen</button>
+        </div>
+      </aside>
+
+      <!-- Floating / Side-Anchored Interactive Camera Dock (Strictly Bounded) -->
+      <aside id="video-dock" class="video-dock hidden" aria-label="Live Camera Streams">
+        <div class="video-dock-header">
+          <span class="video-dock-title">📹 Live Cam</span>
+          <div class="video-dock-controls">
+            <button id="btn-dock-pos" type="button" class="video-dock-btn" title="Switch dock position">⇄</button>
+            <button id="btn-dock-min" type="button" class="video-dock-btn" title="Minimize / restore cameras">−</button>
+          </div>
+        </div>
+        <div class="video-dock-body">
+          <div id="local-video-card" class="video-card video-card--local hidden">
+            <video id="local-video" autoplay muted playsinline></video>
+            <button id="btn-local-fullscreen" type="button" class="video-fs-btn" title="Tam Ekran / Fullscreen">⛶ Tam Ekran</button>
+            <div class="video-badge">
+              <span class="video-dot video-dot--local"></span>
+              <span id="local-video-label">You</span>
+            </div>
+          </div>
+          <div id="remote-video-card" class="video-card video-card--remote hidden">
+            <video id="remote-video" autoplay playsinline></video>
+            <button id="btn-remote-fullscreen" type="button" class="video-fs-btn" title="Tam Ekran / Fullscreen">⛶ Tam Ekran</button>
+            <div class="video-badge">
+              <span class="video-dot video-dot--remote"></span>
+              <span id="remote-video-label">Partner</span>
+            </div>
+          </div>
+        </div>
+      </aside>
     </section>
   </main>
 
