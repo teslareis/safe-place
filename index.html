@@ -43,6 +43,7 @@
           <div class="side-head">
             <button id="btn-side-toggle" class="btn btn--ghost side-toggle" title="Room info &amp; players">☰ <span id="side-count">0</span> 👥</button>
             <div class="side-actions">
+              <button id="btn-invite-top" class="btn btn--invite" title="Copy direct invite link for your partner">🔗 Invite Link</button>
               <button id="btn-mic" class="btn mic-btn mic-btn--off" title="Mute / unmute your microphone">Mic: Off</button>
               <button id="btn-cam" class="btn cam-btn cam-btn--off" title="Turn your camera on or off">Cam: Off</button>
               <button id="btn-screen" class="btn screen-btn screen-btn--off" title="Share your screen with the room">Share Screen</button>
@@ -51,11 +52,12 @@
           </div>
           <div class="side-body">
             <div class="side-block">
-              <label>Room code</label>
+              <label>Room code &amp; direct invite</label>
               <div class="code-row">
                 <code id="room-code">...</code>
-                <button id="btn-copy" class="btn btn--ghost">Copy</button>
+                <button id="btn-copy" class="btn btn--ghost" title="Copy room code">Copy</button>
               </div>
+              <button id="btn-copy-link" class="btn btn--primary btn--invite-full" title="Copy direct auto-join URL">🔗 Copy Invite Link</button>
             </div>
             <div class="side-block">
               <label>Players (<span id="player-count">0</span>)</label>
@@ -67,6 +69,100 @@
         <div class="hub-main">
           <div id="game-menu" class="game-menu"></div>
           <div id="game-container" class="game-container"></div>
+
+          <!-- Reverse Voice Challenge Dedicated Game Container (4 Synchronized Phases) -->
+          <div id="reverse-voice-container" class="game-container reverse-voice-container hidden">
+            <div class="rv">
+              <div class="rv-header">
+                <div>
+                  <h3 class="rv-title">🎙️ Reverse Voice Challenge</h3>
+                  <p class="rv-subtitle">Record a secret phrase, imitate your partner's reversed audio, and guess the double-reversed voice!</p>
+                </div>
+                <div id="rv-steps" class="rv-steps">
+                  <span class="rv-step is-active" data-step="1">1. Record</span>
+                  <span class="rv-step" data-step="2">2. Imitate</span>
+                  <span class="rv-step" data-step="3">3. Guess</span>
+                  <span class="rv-step" data-step="4">4. Reveal</span>
+                </div>
+              </div>
+
+              <!-- Peer Synchronization Status Bar -->
+              <div id="rv-peer-status" class="rv-peer-status"></div>
+
+              <!-- PHASE 1: Original Record -->
+              <div id="rv-phase-1" class="rv-card rv-phase-panel">
+                <span class="rv-phase-badge">Phase 1 of 4 · Original Record</span>
+                <h4 class="rv-phase-title">Record Your Secret Word or Short Phrase</h4>
+                <p class="rv-phase-desc">
+                  Type your secret word (so we can reveal it in Phase 4) and record a 1–5 second voice clip. Once both players finish, your recordings are swapped!
+                </p>
+                <div class="rv-input-row">
+                  <input id="rv-secret-word" type="text" class="rv-input" maxlength="50" placeholder="Enter secret word (e.g. 'Pineapple', 'I love you')..." autocomplete="off">
+                </div>
+                <div class="rv-controls">
+                  <button id="rv-btn-rec-p1" type="button" class="rv-btn rv-btn--record">🎙️ Start Recording</button>
+                  <button id="rv-btn-preview-p1" type="button" class="rv-btn rv-btn--play" disabled>▶ Play My Recording</button>
+                  <button id="rv-btn-send-p1" type="button" class="rv-btn rv-btn--send" disabled>🚀 Send Audio to Partner</button>
+                </div>
+                <div id="rv-status-p1" class="rv-status">Click "Start Recording" and speak clearly into your microphone.</div>
+              </div>
+
+              <!-- PHASE 2: Imitate Reversed Audio -->
+              <div id="rv-phase-2" class="rv-card rv-phase-panel hidden">
+                <span class="rv-phase-badge">Phase 2 of 4 · Imitate Reversed Audio</span>
+                <h4 class="rv-phase-title">Listen to Partner's Reversed Audio &amp; Imitate It!</h4>
+                <p class="rv-phase-desc">
+                  We reversed your partner's audio using Web Audio PCM arrays. Listen closely to the alien-like reversed clip, then record your own vocal imitation of those sounds!
+                </p>
+                <div class="rv-controls">
+                  <button id="rv-btn-play-reversed-p2" type="button" class="rv-btn rv-btn--play">⏪ Play Partner's Reversed Audio</button>
+                </div>
+                <div class="rv-controls">
+                  <button id="rv-btn-rec-p2" type="button" class="rv-btn rv-btn--record">🎙️ Record My Imitation</button>
+                  <button id="rv-btn-preview-p2" type="button" class="rv-btn rv-btn--play" disabled>▶ Preview My Imitation</button>
+                  <button id="rv-btn-send-p2" type="button" class="rv-btn rv-btn--send" disabled>➡️ Continue to Guess (Phase 3)</button>
+                </div>
+                <div id="rv-status-p2" class="rv-status">Listen to the reversed audio first, then mimic the sounds!</div>
+              </div>
+
+              <!-- PHASE 3: Guess from Locally Reversed Imitation -->
+              <div id="rv-phase-3" class="rv-card rv-phase-panel hidden">
+                <span class="rv-phase-badge">Phase 3 of 4 · Guess Partner's Secret Word</span>
+                <h4 class="rv-phase-title">Listen to Your Locally Reversed Imitation &amp; Guess!</h4>
+                <p class="rv-phase-desc">
+                  We locally reversed your OWN vocal imitation using AudioContext! Listen to how your reversed imitation sounds and guess your partner's original word:
+                </p>
+                <div class="rv-controls">
+                  <button id="rv-btn-play-my-imit-rev-p3" type="button" class="rv-btn rv-btn--play">🔁 Play My Reversed Imitation</button>
+                  <button id="rv-btn-play-imit-rev-p3" type="button" class="rv-btn rv-btn--play">🎙️ Play My Raw Imitation</button>
+                </div>
+                <div class="rv-input-row">
+                  <input id="rv-guess-input" type="text" class="rv-input" maxlength="60" placeholder="Type your guess of partner's word..." autocomplete="off">
+                  <button id="rv-btn-send-p3" type="button" class="rv-btn rv-btn--send">✅ Submit Guess &amp; Reveal</button>
+                </div>
+                <div id="rv-status-p3" class="rv-status">Listen to your locally reversed imitation, then submit your guess!</div>
+              </div>
+
+              <!-- PHASE 4: Grand Reveal -->
+              <div id="rv-phase-4" class="rv-card rv-phase-panel hidden">
+                <span class="rv-phase-badge">Phase 4 of 4 · Grand Reveal</span>
+                <h4 class="rv-phase-title">🎉 Original Words vs. Partner Guesses</h4>
+                <p class="rv-phase-desc">
+                  Compare the original secret words with what each partner guessed and play back all 4 stages of audio!
+                </p>
+                <div id="rv-reveal-grid" class="rv-reveal-grid"></div>
+                <div class="rv-controls" style="margin-top: 16px;">
+                  <button id="rv-btn-reveal-orig" type="button" class="rv-btn rv-btn--play">▶ 1. Original</button>
+                  <button id="rv-btn-reveal-rev" type="button" class="rv-btn rv-btn--play">⏪ 2. Reversed</button>
+                  <button id="rv-btn-reveal-raw-imit" type="button" class="rv-btn rv-btn--play">🎙️ 3. Imitation</button>
+                  <button id="rv-btn-reveal-imit" type="button" class="rv-btn rv-btn--play">🔁 4. Reversed Imitation</button>
+                </div>
+                <div class="rv-controls" style="margin-top: 18px;">
+                  <button id="rv-btn-new-round" type="button" class="rv-btn rv-btn--send">🔄 Start New Round</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

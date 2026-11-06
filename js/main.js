@@ -265,18 +265,15 @@
     };
   }
 
-  // ---------- 3. Screen Sharing (getDisplayMedia + track.onended) ----------
+  // ---------- 3. Screen Sharing (getDisplayMedia + track.onended + Mobile Guard) ----------
   function renderScreenBtn(state) {
     if (!screenBtn) return;
     const active = Boolean(screenStream && screenStream.getVideoTracks().length > 0);
-    state = state || (active ? 'on' : 'off');
-    screenBtn.className = 'btn screen-btn screen-btn--' + state;
-    screenBtn.textContent = {
-      on: 'Screen: On',
-      off: 'Share Screen',
-      blocked: 'Screen: Cancelled',
-      na: 'Screen: N/A',
-    }[state] || 'Share Screen';
+    // Never leave button stuck in 'na' or 'blocked' state — always revert cleanly to 'off'
+    const normalized = (state === 'on' || (active && !state)) ? 'on' : 'off';
+    screenBtn.disabled = false;
+    screenBtn.className = 'btn screen-btn screen-btn--' + normalized;
+    screenBtn.textContent = normalized === 'on' ? 'Screen: On' : 'Share Screen';
   }
 
   function updateScreenShareView() {
@@ -336,15 +333,21 @@
 
   async function startScreenShare() {
     if (screenStream || screenPending || !inRoom) return;
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-      renderScreenBtn('na');
+
+    // Robust feature detection for mobile/tablet browsers where getDisplayMedia is restricted
+    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+      window.alert('Screen sharing is not supported on this device.');
+      renderScreenBtn('off');
+      updateScreenShareView();
       return;
     }
+
     screenPending = true;
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
       if (!inRoom) {
         stream.getTracks().forEach(t => t.stop());
+        renderScreenBtn('off');
         return;
       }
 
@@ -364,8 +367,18 @@
       renderScreenBtn('on');
       updateScreenShareView();
     } catch (err) {
-      console.warn('Screen share cancelled or unavailable:', err.name || err);
+      console.warn('Screen share error:', err && (err.name || err.message || err));
+      const errName = (err && err.name) || '';
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+      if (isMobile || errName === 'NotFoundError' || errName === 'NotSupportedError' || errName === 'InvalidAccessError' || errName === 'TypeError') {
+        window.alert('Screen sharing is not supported on this device.');
+      } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError' || errName === 'AbortError') {
+        window.alert('Screen sharing was cancelled or is not supported on this device.');
+      } else {
+        window.alert('Screen sharing is not supported on this device.');
+      }
       renderScreenBtn('off');
+      updateScreenShareView();
     } finally {
       screenPending = false;
     }
@@ -827,6 +840,20 @@
     $('game-container').innerHTML = '';
   }
 
+  function joinRoomByCode(roomCode) {
+    const id = String(roomCode || '').trim();
+    if (!id) {
+      $('lobby-msg').textContent = 'Enter a room code first.';
+      return;
+    }
+    if ($('join-input')) $('join-input').value = id;
+    $('lobby-msg').textContent = '';
+    $('btn-create').disabled = true;
+    $('btn-join').disabled = true;
+    setStatus('Connecting…', 'wait');
+    net.join(id, $('name-input').value.trim() || 'Player');
+  }
+
   $('btn-create').onclick = () => {
     $('lobby-msg').textContent = '';
     $('btn-create').disabled = true;
@@ -836,26 +863,86 @@
   };
 
   $('btn-join').onclick = () => {
-    const id = $('join-input').value.trim();
-    if (!id) {
-      $('lobby-msg').textContent = 'Enter a room code first.';
-      return;
-    }
-    $('lobby-msg').textContent = '';
-    $('btn-create').disabled = true;
-    $('btn-join').disabled = true;
-    setStatus('Connecting…', 'wait');
-    net.join(id, $('name-input').value.trim() || 'Player');
+    joinRoomByCode($('join-input').value);
   };
+
+  function copyTextToClipboard(text, onDone) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(onDone).catch(() => fallbackCopy(text, onDone));
+    } else {
+      fallbackCopy(text, onDone);
+    }
+  }
+
+  function fallbackCopy(text, onDone) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    if (onDone) onDone();
+  }
+
+  function buildInviteLink() {
+    const roomCode = ($('room-code') && $('room-code').textContent.trim()) || '';
+    return window.location.origin + window.location.pathname + '?room=' + roomCode;
+  }
 
   $('btn-copy').onclick = () => {
-    navigator.clipboard.writeText($('room-code').textContent);
-    $('btn-copy').textContent = 'Copied!';
-    setTimeout(() => ($('btn-copy').textContent = 'Copy'), 1200);
+    const code = $('room-code').textContent.trim();
+    copyTextToClipboard(code, () => {
+      $('btn-copy').textContent = 'Copied!';
+      setTimeout(() => ($('btn-copy').textContent = 'Copy'), 1200);
+    });
   };
 
-  $('btn-leave').onclick = () => leaveRoom('You left the room.');
+  if ($('btn-copy-link')) {
+    $('btn-copy-link').onclick = () => {
+      const link = buildInviteLink();
+      copyTextToClipboard(link, () => {
+        $('btn-copy-link').textContent = '✔ Invite Link Copied!';
+        setTimeout(() => ($('btn-copy-link').textContent = '🔗 Copy Invite Link'), 1500);
+      });
+    };
+  }
+
+  if ($('btn-invite-top')) {
+    $('btn-invite-top').onclick = () => {
+      const link = buildInviteLink();
+      copyTextToClipboard(link, () => {
+        $('btn-invite-top').textContent = '✔ Copied!';
+        setTimeout(() => ($('btn-invite-top').textContent = '🔗 Invite Link'), 1500);
+      });
+    };
+  }
+
+  $('btn-leave').onclick = () => {
+    if (window.location.search.includes('room=')) {
+      try { window.history.replaceState(null, '', window.location.pathname); } catch (e) {}
+    }
+    leaveRoom('You left the room.');
+  };
 
   // In-game the sidebar is a slim bar; ☰ opens room code + players as a dropdown
   $('btn-side-toggle').onclick = () => $('sidebar').classList.toggle('open');
+
+  // ---------- 7. Auto-Join via Direct Invite Link (?room=...) ----------
+  function checkAutoJoinFromUrl() {
+    if (window.__safePlaceAutoJoinChecked) return;
+    const params = new URLSearchParams(window.location.search);
+    const roomParam = params.get('room');
+    if (roomParam && roomParam.trim()) {
+      window.__safePlaceAutoJoinChecked = true;
+      joinRoomByCode(roomParam.trim());
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkAutoJoinFromUrl);
+  } else {
+    checkAutoJoinFromUrl();
+  }
 })();

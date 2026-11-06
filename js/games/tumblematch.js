@@ -1375,4 +1375,1052 @@ GameHub.register(TumbleMatch);
   } else {
     bindFullscreenControls();
   }
+
+  /* ==========================================================================
+     Reverse Voice Challenge (4-Phase Synchronous WebRTC / PeerJS Audio Game)
+     ========================================================================== */
+  const ReverseVoice = {
+    id: 'reversevoice',
+    name: 'Reverse Voice',
+    title: 'Reverse Voice',
+    icon: '🎙️',
+
+    ctx: null,
+    root: null,
+    state: null,
+
+    audioCtx: null,
+    activeSource: null,
+    mediaRecorder: null,
+    mediaStream: null,
+    recordedChunks: [],
+    recordStartTs: 0,
+    recordTimer: null,
+    localDraftDataUrl: null,
+    localDraftDuration: 0,
+    localImitationDataUrl: null,
+    localImitationDuration: 0,
+    localSubPhase: 0,
+    isRecording: false,
+    decodedCache: {},
+
+    start(ctx) {
+      this.ctx = ctx;
+      this.decodedCache = {};
+      this.localDraftDataUrl = null;
+      this.localDraftDuration = 0;
+      this.localImitationDataUrl = null;
+      this.localImitationDuration = 0;
+      this.localSubPhase = 0;
+      this.isRecording = false;
+
+      // Switch containers: display #reverse-voice-container as flex and hide #game-container
+      const rvContainer = document.getElementById('reverse-voice-container');
+      const stdContainer = ctx.container || document.getElementById('game-container');
+
+      if (rvContainer) {
+        if (stdContainer) stdContainer.style.display = 'none';
+        rvContainer.classList.remove('hidden');
+        rvContainer.style.display = 'flex';
+        this.root = rvContainer;
+      } else {
+        this.root = stdContainer;
+        if (this.root) this.root.style.display = 'flex';
+        this._injectFallbackHtml();
+      }
+
+      this.state = this._freshState();
+      this._bindDomEvents();
+      this._renderPhase();
+
+      // Request microphone stream once on tab open and keep it alive for the entire session
+      this._ensureMicStream(true);
+
+      ctx.onMessage((type, data, from) => {
+        this._onNetMessage(type, data, from);
+      });
+
+      ctx.onPlayers(() => {
+        this._ensurePlayerSlots();
+        if (this.ctx && this.ctx.isHost) {
+          this._broadcastState();
+        } else {
+          this._renderPhase();
+        }
+      });
+
+      if (ctx.isHost) {
+        this._broadcastState();
+      } else {
+        ctx.send('hello', null, ctx.hostId);
+      }
+    },
+
+    destroy() {
+      this._stopRecording(true);
+      this._stopPlayback();
+      if (this.audioCtx && this.audioCtx.state !== 'closed') {
+        try { this.audioCtx.close(); } catch (e) {}
+      }
+      this.audioCtx = null;
+      this.decodedCache = {};
+      // NOTE: Do NOT call track.stop() on this.mediaStream / window.__rvPersistentMicStream
+      // so microphone permission remains granted across rounds and tab switches!
+
+      // Restore standard #game-container and hide #reverse-voice-container
+      const rvContainer = document.getElementById('reverse-voice-container');
+      const stdContainer = (this.ctx && this.ctx.container) || document.getElementById('game-container');
+      if (rvContainer) {
+        rvContainer.classList.add('hidden');
+        rvContainer.style.display = 'none';
+      }
+      if (stdContainer) {
+        stdContainer.style.display = '';
+      }
+
+      this.root = null;
+      this.ctx = null;
+    },
+
+    _injectFallbackHtml() {
+      if (!this.root) return;
+      this.root.innerHTML = `
+        <div class="rv">
+          <div class="rv-header">
+            <div>
+              <h3 class="rv-title">🎙️ Reverse Voice Challenge</h3>
+              <p class="rv-subtitle">Record a secret phrase, imitate your partner's reversed audio, and guess the double-reversed voice!</p>
+            </div>
+            <div id="rv-steps" class="rv-steps">
+              <span class="rv-step is-active" data-step="1">1. Record</span>
+              <span class="rv-step" data-step="2">2. Imitate</span>
+              <span class="rv-step" data-step="3">3. Guess</span>
+              <span class="rv-step" data-step="4">4. Reveal</span>
+            </div>
+          </div>
+          <div id="rv-peer-status" class="rv-peer-status"></div>
+          <div id="rv-phase-1" class="rv-card rv-phase-panel">
+            <span class="rv-phase-badge">Phase 1 of 4 · Original Record</span>
+            <h4 class="rv-phase-title">Record Your Secret Word or Short Phrase</h4>
+            <p class="rv-phase-desc">Type your secret word and record a 1–5 second voice clip. Once both players finish, your recordings are swapped!</p>
+            <div class="rv-input-row">
+              <input id="rv-secret-word" type="text" class="rv-input" maxlength="50" placeholder="Enter secret word (e.g. 'Pineapple', 'I love you')..." autocomplete="off">
+            </div>
+            <div class="rv-controls">
+              <button id="rv-btn-rec-p1" type="button" class="rv-btn rv-btn--record">🎙️ Start Recording</button>
+              <button id="rv-btn-preview-p1" type="button" class="rv-btn rv-btn--play" disabled>▶ Play My Recording</button>
+              <button id="rv-btn-send-p1" type="button" class="rv-btn rv-btn--send" disabled>🚀 Send Audio to Partner</button>
+            </div>
+            <div id="rv-status-p1" class="rv-status">Click "Start Recording" and speak clearly into your microphone.</div>
+          </div>
+          <div id="rv-phase-2" class="rv-card rv-phase-panel hidden">
+            <span class="rv-phase-badge">Phase 2 of 4 · Imitate Reversed Audio</span>
+            <h4 class="rv-phase-title">Listen to Partner's Reversed Audio &amp; Imitate It!</h4>
+            <p class="rv-phase-desc">Listen closely to the alien-like reversed clip, then record your own vocal imitation of those sounds!</p>
+            <div class="rv-controls">
+              <button id="rv-btn-play-reversed-p2" type="button" class="rv-btn rv-btn--play">⏪ Play Partner's Reversed Audio</button>
+            </div>
+            <div class="rv-controls">
+              <button id="rv-btn-rec-p2" type="button" class="rv-btn rv-btn--record">🎙️ Record My Imitation</button>
+              <button id="rv-btn-preview-p2" type="button" class="rv-btn rv-btn--play" disabled>▶ Preview My Imitation</button>
+              <button id="rv-btn-send-p2" type="button" class="rv-btn rv-btn--send" disabled>➡️ Continue to Guess (Phase 3)</button>
+            </div>
+            <div id="rv-status-p2" class="rv-status">Listen to the reversed audio first, then mimic the sounds!</div>
+          </div>
+          <div id="rv-phase-3" class="rv-card rv-phase-panel hidden">
+            <span class="rv-phase-badge">Phase 3 of 4 · Guess Partner's Secret Word</span>
+            <h4 class="rv-phase-title">Listen to Your Locally Reversed Imitation &amp; Guess!</h4>
+            <p class="rv-phase-desc">We locally reversed your OWN vocal imitation using AudioContext! Listen and guess your partner's original word:</p>
+            <div class="rv-controls">
+              <button id="rv-btn-play-my-imit-rev-p3" type="button" class="rv-btn rv-btn--play">🔁 Play My Reversed Imitation</button>
+              <button id="rv-btn-play-imit-rev-p3" type="button" class="rv-btn rv-btn--play">🎙️ Play My Raw Imitation</button>
+            </div>
+            <div class="rv-input-row">
+              <input id="rv-guess-input" type="text" class="rv-input" maxlength="60" placeholder="Type your guess of partner's word..." autocomplete="off">
+              <button id="rv-btn-send-p3" type="button" class="rv-btn rv-btn--send">✅ Submit Guess &amp; Reveal</button>
+            </div>
+            <div id="rv-status-p3" class="rv-status">Listen to your locally reversed imitation, then submit your guess!</div>
+          </div>
+          <div id="rv-phase-4" class="rv-card rv-phase-panel hidden">
+            <span class="rv-phase-badge">Phase 4 of 4 · Grand Reveal</span>
+            <h4 class="rv-phase-title">🎉 Original Words vs. Partner Guesses</h4>
+            <p class="rv-phase-desc">Compare the original secret words with what each partner guessed and play back all 4 stages of audio!</p>
+            <div id="rv-reveal-grid" class="rv-reveal-grid"></div>
+            <div class="rv-controls" style="margin-top: 16px;">
+              <button id="rv-btn-reveal-orig" type="button" class="rv-btn rv-btn--play">▶ 1. Original</button>
+              <button id="rv-btn-reveal-rev" type="button" class="rv-btn rv-btn--play">⏪ 2. Reversed</button>
+              <button id="rv-btn-reveal-raw-imit" type="button" class="rv-btn rv-btn--play">🎙️ 3. Imitation</button>
+              <button id="rv-btn-reveal-imit" type="button" class="rv-btn rv-btn--play">🔁 4. Reversed Imitation</button>
+            </div>
+            <div class="rv-controls" style="margin-top: 18px;">
+              <button id="rv-btn-new-round" type="button" class="rv-btn rv-btn--send">🔄 Start New Round</button>
+            </div>
+          </div>
+        </div>
+      `;
+    },
+
+    _getPlayersList() {
+      const list = (this.ctx && (this.ctx.players || this.ctx.roster)) || [];
+      return list.slice(0, 2);
+    },
+
+    _freshState() {
+      const players = this._getPlayersList();
+      const clips = {};
+      players.forEach(p => {
+        clips[p.id] = {
+          name: p.name,
+          word: '',
+          originalB64: null,
+          imitationB64: null,
+          guess: '',
+          p1Done: false,
+          p2Done: false,
+          p3Done: false
+        };
+      });
+      return {
+        phase: 1, // 1: Original Record, 2: Imitate (and local transition to 3: Guess), 4: Reveal
+        round: 1,
+        players: players.map(p => ({ id: p.id, name: p.name })),
+        clips
+      };
+    },
+
+    _ensurePlayerSlots() {
+      if (!this.state || !this.ctx) return;
+      const roster = this._getPlayersList();
+      this.state.players = roster.map(p => ({ id: p.id, name: p.name }));
+      roster.forEach(p => {
+        if (!this.state.clips[p.id]) {
+          this.state.clips[p.id] = {
+            name: p.name,
+            word: '',
+            originalB64: null,
+            imitationB64: null,
+            guess: '',
+            p1Done: false,
+            p2Done: false,
+            p3Done: false
+          };
+        } else {
+          this.state.clips[p.id].name = p.name;
+        }
+      });
+    },
+
+    _getEffectiveUiPhase() {
+      if (!this.state) return 1;
+      if (this.state.phase === 1) return 1;
+      if (this.state.phase === 4) return 4;
+      // When network state is in the Imitate/Guess stage (phase 2 or 3),
+      // each player advances locally from Phase 2 (Imitate) -> Phase 3 (Guess)
+      // as soon as they lock in their own local imitation!
+      const myClip = this.state.clips?.[this.ctx?.myId];
+      if (this.localSubPhase === 3 || (myClip && (myClip.p2Done || myClip.p3Done)) || this.state.phase === 3) {
+        return 3;
+      }
+      return 2;
+    },
+
+    _onNetMessage(type, data, fromId) {
+      if (!this.ctx) return;
+
+      if (type === 'state') {
+        const prevPhase = this.state ? this.state.phase : 0;
+        const prevRound = this.state ? this.state.round : 0;
+        this.state = data;
+        if (prevRound !== this.state.round) {
+          this._stopRecording(true);
+          this._stopPlayback();
+          this.localDraftDataUrl = null;
+          this.localDraftDuration = 0;
+          this.localImitationDataUrl = null;
+          this.localImitationDuration = 0;
+          this.localSubPhase = 0;
+          this.decodedCache = {};
+          const wordInput = this.root?.querySelector('#rv-secret-word');
+          const guessInput = this.root?.querySelector('#rv-guess-input');
+          if (wordInput) wordInput.value = '';
+          if (guessInput) guessInput.value = '';
+        } else if (prevPhase !== this.state.phase && this.state.phase === 2 && prevPhase === 1) {
+          this._stopRecording(true);
+          this._stopPlayback();
+          this.localDraftDataUrl = null;
+          this.localDraftDuration = 0;
+        }
+        this._renderPhase();
+        return;
+      }
+
+      if (!this.ctx.isHost) return;
+
+      if (type === 'hello') {
+        this._ensurePlayerSlots();
+        this.ctx.send('state', this.state, fromId);
+      } else if (type === 'submit_p1') {
+        this._handleP1Submit((data && data.playerId) || fromId, data && data.word, data && data.audioB64);
+      } else if (type === 'mark_p2_done') {
+        this._handleP2Done((data && data.playerId) || fromId);
+      } else if (type === 'submit_p3') {
+        this._handleP3Submit(
+          (data && data.playerId) || fromId,
+          data && data.guess,
+          data && data.imitationB64
+        );
+      } else if (type === 'new_round') {
+        this._startNewRound();
+      }
+    },
+
+    _broadcastState() {
+      if (!this.ctx || !this.ctx.isHost) return;
+      this._ensurePlayerSlots();
+      this.ctx.send('state', this.state);
+      this._renderPhase();
+    },
+
+    _handleP1Submit(playerId, word, audioB64) {
+      this._ensurePlayerSlots();
+      if (!this.state.clips[playerId] || !audioB64) return;
+      this.state.clips[playerId].word = (word || '').trim();
+      this.state.clips[playerId].originalB64 = audioB64;
+      this.state.clips[playerId].p1Done = true;
+
+      if (this._allPlayersDone('p1Done')) {
+        this.state.phase = 2;
+        this.localDraftDataUrl = null;
+        this.localDraftDuration = 0;
+      }
+      this._broadcastState();
+    },
+
+    _handleP2Done(playerId) {
+      this._ensurePlayerSlots();
+      if (!this.state.clips[playerId]) return;
+      // Only mark status as ready for Phase 3; imitation audio stays local until Phase 3 guess is submitted!
+      this.state.clips[playerId].p2Done = true;
+      if (this._allPlayersDone('p2Done') && this.state.phase < 3) {
+        this.state.phase = 3;
+      }
+      this._broadcastState();
+    },
+
+    _handleP3Submit(playerId, guess, imitationB64) {
+      this._ensurePlayerSlots();
+      if (!this.state.clips[playerId]) return;
+      this.state.clips[playerId].guess = (guess || '').trim() || '(No guess)';
+      if (imitationB64) {
+        this.state.clips[playerId].imitationB64 = imitationB64;
+      }
+      this.state.clips[playerId].p2Done = true;
+      this.state.clips[playerId].p3Done = true;
+
+      if (this._allPlayersDone('p3Done')) {
+        this.state.phase = 4;
+      }
+      this._broadcastState();
+    },
+
+    _allPlayersDone(flag) {
+      const ids = this.state.players.map(p => p.id);
+      if (ids.length === 0) return false;
+      return ids.every(id => this.state.clips[id] && this.state.clips[id][flag]);
+    },
+
+    _startNewRound() {
+      const nextRound = (this.state?.round || 1) + 1;
+      this.decodedCache = {};
+      this.localDraftDataUrl = null;
+      this.localDraftDuration = 0;
+      this.localImitationDataUrl = null;
+      this.localImitationDuration = 0;
+      this.localSubPhase = 0;
+      this.state = this._freshState();
+      this.state.round = nextRound;
+      const wordInput = this.root?.querySelector('#rv-secret-word');
+      const guessInput = this.root?.querySelector('#rv-guess-input');
+      if (wordInput) wordInput.value = '';
+      if (guessInput) guessInput.value = '';
+      if (this.ctx?.isHost) {
+        this._broadcastState();
+      }
+    },
+
+    _getPartnerId() {
+      if (!this.state || !this.ctx) return null;
+      const partner = this.state.players.find(p => p.id !== this.ctx.myId);
+      return partner ? partner.id : this.ctx.myId;
+    },
+
+    /* ----------------------------------------------------------------------
+       Web Audio API: Decode & Reverse AudioBuffer PCM Arrays
+       ---------------------------------------------------------------------- */
+    _getAudioContext() {
+      if (!this.audioCtx || this.audioCtx.state === 'closed') {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        this.audioCtx = new AudioCtx();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume().catch(() => {});
+      }
+      return this.audioCtx;
+    },
+
+    _dataUrlToArrayBuffer(dataUrl) {
+      const commaIdx = dataUrl.indexOf(',');
+      const base64 = commaIdx >= 0 ? dataUrl.slice(commaIdx + 1) : dataUrl;
+      const binary = atob(base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes.buffer;
+    },
+
+    async _decodeDataUrl(cacheKey, dataUrl) {
+      if (!dataUrl) throw new Error('No audio data available.');
+      if (this.decodedCache[cacheKey]) {
+        return this.decodedCache[cacheKey];
+      }
+      const actx = this._getAudioContext();
+      const rawBuffer = this._dataUrlToArrayBuffer(dataUrl);
+      const audioBuffer = await actx.decodeAudioData(rawBuffer.slice(0));
+      this.decodedCache[cacheKey] = audioBuffer;
+      return audioBuffer;
+    },
+
+    _reverseAudioBuffer(sourceBuffer) {
+      const actx = this._getAudioContext();
+      const numChannels = sourceBuffer.numberOfChannels;
+      const length = sourceBuffer.length;
+      const sampleRate = sourceBuffer.sampleRate;
+      const reversedBuffer = actx.createBuffer(numChannels, length, sampleRate);
+
+      for (let ch = 0; ch < numChannels; ch++) {
+        const srcData = sourceBuffer.getChannelData(ch);
+        const dstData = reversedBuffer.getChannelData(ch);
+        for (let i = 0, j = length - 1; i < length; i++, j--) {
+          dstData[i] = srcData[j];
+        }
+      }
+      return reversedBuffer;
+    },
+
+    _stopPlayback() {
+      if (this.activeSource) {
+        try { this.activeSource.stop(); } catch (e) {}
+        try { this.activeSource.disconnect(); } catch (e) {}
+        this.activeSource = null;
+      }
+      if (this.root) {
+        this.root.querySelectorAll('.rv-btn--playing').forEach(btn => {
+          btn.classList.remove('rv-btn--playing');
+        });
+      }
+    },
+
+    async _playAudioDataUrl(cacheKey, dataUrl, shouldReverse, btnEl) {
+      if (!dataUrl) {
+        alert('No audio clip recorded yet for this stage.');
+        return;
+      }
+      try {
+        this._stopPlayback();
+        const actx = this._getAudioContext();
+        const decoded = await this._decodeDataUrl(cacheKey, dataUrl);
+        const targetBuffer = shouldReverse
+          ? this._reverseAudioBuffer(decoded)
+          : decoded;
+
+        const source = actx.createBufferSource();
+        source.buffer = targetBuffer;
+        source.connect(actx.destination);
+
+        if (btnEl) btnEl.classList.add('rv-btn--playing');
+        this.activeSource = source;
+        source.onended = () => {
+          if (this.activeSource === source) {
+            this.activeSource = null;
+          }
+          if (btnEl) btnEl.classList.remove('rv-btn--playing');
+        };
+        source.start(0);
+      } catch (err) {
+        console.error('[ReverseVoice] Audio playback error:', err);
+        alert('Could not play audio clip on this browser/device.');
+      }
+    },
+
+    /* ----------------------------------------------------------------------
+       Persistent Microphone Stream & MediaRecorder Helpers (Request ONCE)
+       ---------------------------------------------------------------------- */
+    _isStreamActive(stream) {
+      if (!stream) return false;
+      const tracks = stream.getAudioTracks ? stream.getAudioTracks() : [];
+      return tracks.length > 0 && tracks.some(t => t.readyState === 'live');
+    },
+
+    async _ensureMicStream(silent = false) {
+      if (this._isStreamActive(this.mediaStream)) {
+        return this.mediaStream;
+      }
+      if (this._isStreamActive(window.__rvPersistentMicStream)) {
+        this.mediaStream = window.__rvPersistentMicStream;
+        return this.mediaStream;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (!silent) alert('Audio recording is not supported on this browser/device.');
+        return null;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        window.__rvPersistentMicStream = stream;
+        this.mediaStream = stream;
+        return stream;
+      } catch (err) {
+        if (!silent) {
+          console.warn('[ReverseVoice] Microphone access failed:', err);
+          alert('Microphone access was denied or unavailable. Please allow microphone permissions to play Reverse Voice.');
+        }
+        return null;
+      }
+    },
+
+    async _startRecording(statusEl, recBtnEl) {
+      if (this.isRecording) return;
+      this._stopPlayback();
+
+      if (typeof MediaRecorder === 'undefined') {
+        alert('Audio recording is not supported on this browser/device.');
+        return;
+      }
+
+      const stream = await this._ensureMicStream(false);
+      if (!stream) return;
+
+      try {
+        this.recordedChunks = [];
+
+        const mimeCandidates = [
+          'audio/webm;codecs=opus',
+          'audio/webm',
+          'audio/mp4',
+          'audio/ogg;codecs=opus'
+        ];
+        let options = {};
+        if (typeof MediaRecorder.isTypeSupported === 'function') {
+          for (const mime of mimeCandidates) {
+            if (MediaRecorder.isTypeSupported(mime)) {
+              options = { mimeType: mime };
+              break;
+            }
+          }
+        }
+
+        const recorder = new MediaRecorder(stream, options);
+        this.mediaRecorder = recorder;
+        this.isRecording = true;
+        this.recordStartTs = Date.now();
+
+        recorder.ondataavailable = e => {
+          if (e.data && e.data.size > 0) {
+            this.recordedChunks.push(e.data);
+          }
+        };
+
+        recorder.onstop = () => {
+          const elapsed = Math.max(0.4, (Date.now() - this.recordStartTs) / 1000);
+          this.localDraftDuration = Number(elapsed.toFixed(1));
+          const mimeType = recorder.mimeType || 'audio/webm';
+          const blob = new Blob(this.recordedChunks, { type: mimeType });
+          // Keep this.mediaStream / window.__rvPersistentMicStream alive! Never call track.stop().
+          this.isRecording = false;
+          if (this.recordTimer) {
+            clearInterval(this.recordTimer);
+            this.recordTimer = null;
+          }
+
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            this.localDraftDataUrl = reader.result;
+            delete this.decodedCache['local_draft'];
+            this._renderPhase();
+          };
+          reader.readAsDataURL(blob);
+        };
+
+        recorder.start();
+        if (recBtnEl) {
+          recBtnEl.classList.add('is-recording');
+          recBtnEl.textContent = '⏹ Stop Recording';
+        }
+        if (statusEl) {
+          statusEl.textContent = '🔴 Recording... (0.0s / max 6.0s)';
+        }
+
+        this.recordTimer = setInterval(() => {
+          const sec = (Date.now() - this.recordStartTs) / 1000;
+          if (statusEl) {
+            statusEl.textContent = `🔴 Recording... (${sec.toFixed(1)}s / max 6.0s)`;
+          }
+          if (sec >= 6.0) {
+            this._stopRecording(false);
+          }
+        }, 100);
+      } catch (err) {
+        console.warn('[ReverseVoice] MediaRecorder start failed:', err);
+        this.isRecording = false;
+        alert('Could not start audio recording on this device.');
+      }
+    },
+
+    _stopRecording(discard = false) {
+      if (this.recordTimer) {
+        clearInterval(this.recordTimer);
+        this.recordTimer = null;
+      }
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        if (discard) {
+          this.mediaRecorder.ondataavailable = null;
+          this.mediaRecorder.onstop = null;
+        }
+        try { this.mediaRecorder.stop(); } catch (e) {}
+      }
+      this.mediaRecorder = null;
+      this.isRecording = false;
+      // Intentionally keep this.mediaStream tracks active so permission is never re-requested!
+    },
+
+    /* ----------------------------------------------------------------------
+       DOM Event Bindings & Phase Synchronization UI
+       ---------------------------------------------------------------------- */
+    _bindDomEvents() {
+      if (!this.root) return;
+
+      // Phase 1 Controls
+      const wordInput = this.root.querySelector('#rv-secret-word');
+      const recBtnP1 = this.root.querySelector('#rv-btn-rec-p1');
+      const previewBtnP1 = this.root.querySelector('#rv-btn-preview-p1');
+      const sendBtnP1 = this.root.querySelector('#rv-btn-send-p1');
+      const statusP1 = this.root.querySelector('#rv-status-p1');
+
+      if (wordInput) {
+        wordInput.oninput = () => {
+          const myClip = this.state?.clips?.[this.ctx?.myId];
+          if (myClip) myClip.word = wordInput.value;
+        };
+      }
+      if (recBtnP1) {
+        recBtnP1.onclick = () => {
+          if (this.isRecording) this._stopRecording(false);
+          else this._startRecording(statusP1, recBtnP1);
+        };
+      }
+      if (previewBtnP1) {
+        previewBtnP1.onclick = () => {
+          this._playAudioDataUrl('local_draft', this.localDraftDataUrl, false, previewBtnP1);
+        };
+      }
+      if (sendBtnP1) {
+        sendBtnP1.onclick = () => {
+          if (!this.localDraftDataUrl || !this.ctx) return;
+          const wordVal = wordInput ? wordInput.value.trim() : '';
+          const audioB64 = this.localDraftDataUrl;
+          if (this.ctx.isHost) {
+            this._handleP1Submit(this.ctx.myId, wordVal, audioB64);
+          } else {
+            const myClip = this.state.clips[this.ctx.myId];
+            if (myClip) myClip.p1Done = true;
+            this._renderPhase();
+            this.ctx.send('submit_p1', {
+              playerId: this.ctx.myId,
+              word: wordVal,
+              audioB64
+            }, this.ctx.hostId);
+          }
+        };
+      }
+
+      // Phase 2 Controls (Imitate Partner's Reversed Audio -> Keep Local for Phase 3)
+      const playRevBtnP2 = this.root.querySelector('#rv-btn-play-reversed-p2');
+      const recBtnP2 = this.root.querySelector('#rv-btn-rec-p2');
+      const previewBtnP2 = this.root.querySelector('#rv-btn-preview-p2');
+      const sendBtnP2 = this.root.querySelector('#rv-btn-send-p2');
+      const statusP2 = this.root.querySelector('#rv-status-p2');
+
+      if (playRevBtnP2) {
+        playRevBtnP2.onclick = () => {
+          const partnerId = this._getPartnerId();
+          const partnerClip = partnerId ? this.state?.clips?.[partnerId] : null;
+          this._playAudioDataUrl(
+            `orig_${partnerId}_r${this.state?.round || 1}`,
+            partnerClip?.originalB64,
+            true, // Reverse partner's original PCM arrays!
+            playRevBtnP2
+          );
+        };
+      }
+      if (recBtnP2) {
+        recBtnP2.onclick = () => {
+          if (this.isRecording) this._stopRecording(false);
+          else this._startRecording(statusP2, recBtnP2);
+        };
+      }
+      if (previewBtnP2) {
+        previewBtnP2.onclick = () => {
+          this._playAudioDataUrl('local_draft', this.localDraftDataUrl, false, previewBtnP2);
+        };
+      }
+      if (sendBtnP2) {
+        sendBtnP2.onclick = () => {
+          if (!this.localDraftDataUrl || !this.ctx) return;
+          // Store imitation locally for Phase 3 (DO NOT send audio to partner yet!)
+          this.localImitationDataUrl = this.localDraftDataUrl;
+          this.localImitationDuration = this.localDraftDuration;
+          this.localDraftDataUrl = null;
+          this.localDraftDuration = 0;
+          this.localSubPhase = 3;
+          delete this.decodedCache['local_imitation'];
+
+          if (this.ctx.isHost) {
+            this._handleP2Done(this.ctx.myId);
+          } else {
+            const myClip = this.state.clips[this.ctx.myId];
+            if (myClip) myClip.p2Done = true;
+            this._renderPhase();
+            this.ctx.send('mark_p2_done', { playerId: this.ctx.myId }, this.ctx.hostId);
+          }
+        };
+      }
+
+      // Phase 3 Controls (Locally Reverse OWN Imitation & Guess Partner's Original Word)
+      const playMyImitRevBtnP3 = this.root.querySelector('#rv-btn-play-my-imit-rev-p3');
+      const playRawImitBtnP3 = this.root.querySelector('#rv-btn-play-imit-rev-p3');
+      const guessInput = this.root.querySelector('#rv-guess-input');
+      const sendBtnP3 = this.root.querySelector('#rv-btn-send-p3');
+
+      if (playMyImitRevBtnP3) {
+        playMyImitRevBtnP3.onclick = () => {
+          const myId = this.ctx?.myId;
+          const myClip = myId ? this.state?.clips?.[myId] : null;
+          const imitSrc = this.localImitationDataUrl || myClip?.imitationB64;
+          this._playAudioDataUrl(
+            'local_imitation',
+            imitSrc,
+            true, // Locally reverse OWN recorded imitation!
+            playMyImitRevBtnP3
+          );
+        };
+      }
+      if (playRawImitBtnP3) {
+        playRawImitBtnP3.onclick = () => {
+          const myId = this.ctx?.myId;
+          const myClip = myId ? this.state?.clips?.[myId] : null;
+          const imitSrc = this.localImitationDataUrl || myClip?.imitationB64;
+          this._playAudioDataUrl(
+            'local_imitation',
+            imitSrc,
+            false, // Play own raw imitation unreversed
+            playRawImitBtnP3
+          );
+        };
+      }
+
+      const submitGuess = () => {
+        if (!this.ctx) return;
+        const guessVal = guessInput ? guessInput.value.trim() : '';
+        if (!guessVal) {
+          alert('Please type a guess before submitting!');
+          return;
+        }
+        const imitAudioB64 = this.localImitationDataUrl;
+        if (this.ctx.isHost) {
+          this._handleP3Submit(this.ctx.myId, guessVal, imitAudioB64);
+        } else {
+          const myClip = this.state.clips[this.ctx.myId];
+          if (myClip) {
+            myClip.guess = guessVal;
+            if (imitAudioB64) myClip.imitationB64 = imitAudioB64;
+            myClip.p3Done = true;
+          }
+          this._renderPhase();
+          this.ctx.send('submit_p3', {
+            playerId: this.ctx.myId,
+            guess: guessVal,
+            imitationB64: imitAudioB64
+          }, this.ctx.hostId);
+        }
+      };
+
+      if (sendBtnP3) sendBtnP3.onclick = submitGuess;
+      if (guessInput) {
+        guessInput.onkeydown = e => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            submitGuess();
+          }
+        };
+      }
+
+      // Phase 4 Controls (Grand Reveal: Original, Reversed, Imitation, Reversed Imitation)
+      const revOrigBtn = this.root.querySelector('#rv-btn-reveal-orig');
+      const revRevBtn = this.root.querySelector('#rv-btn-reveal-rev');
+      const revRawImitBtn = this.root.querySelector('#rv-btn-reveal-raw-imit');
+      const revImitBtn = this.root.querySelector('#rv-btn-reveal-imit');
+      const newRoundBtn = this.root.querySelector('#rv-btn-new-round');
+
+      if (revOrigBtn) {
+        revOrigBtn.onclick = () => {
+          const partnerId = this._getPartnerId();
+          const clip = partnerId ? this.state?.clips?.[partnerId] : null;
+          this._playAudioDataUrl(`orig_${partnerId}_r${this.state?.round || 1}`, clip?.originalB64, false, revOrigBtn);
+        };
+      }
+      if (revRevBtn) {
+        revRevBtn.onclick = () => {
+          const partnerId = this._getPartnerId();
+          const clip = partnerId ? this.state?.clips?.[partnerId] : null;
+          this._playAudioDataUrl(`orig_${partnerId}_r${this.state?.round || 1}`, clip?.originalB64, true, revRevBtn);
+        };
+      }
+      if (revRawImitBtn) {
+        revRawImitBtn.onclick = () => {
+          const myId = this.ctx?.myId;
+          const clip = myId ? this.state?.clips?.[myId] : null;
+          this._playAudioDataUrl(`imit_${myId}_r${this.state?.round || 1}`, clip?.imitationB64 || this.localImitationDataUrl, false, revRawImitBtn);
+        };
+      }
+      if (revImitBtn) {
+        revImitBtn.onclick = () => {
+          const myId = this.ctx?.myId;
+          const clip = myId ? this.state?.clips?.[myId] : null;
+          this._playAudioDataUrl(`imit_${myId}_r${this.state?.round || 1}`, clip?.imitationB64 || this.localImitationDataUrl, true, revImitBtn);
+        };
+      }
+      if (newRoundBtn) {
+        newRoundBtn.onclick = () => {
+          if (!this.ctx) return;
+          if (this.ctx.isHost) {
+            this._startNewRound();
+          } else {
+            this.ctx.send('new_round', null, this.ctx.hostId);
+          }
+        };
+      }
+    },
+
+    _renderPhase() {
+      if (!this.root || !this.state || !this.ctx) return;
+      this._ensurePlayerSlots();
+
+      const uiPhase = this._getEffectiveUiPhase();
+
+      // Update 4-step header pills
+      const stepsEl = this.root.querySelector('#rv-steps');
+      if (stepsEl) {
+        const labels = [
+          { num: 1, text: '1. Record' },
+          { num: 2, text: '2. Imitate' },
+          { num: 3, text: '3. Guess' },
+          { num: 4, text: '4. Reveal' }
+        ];
+        stepsEl.innerHTML = labels.map(s => {
+          let cls = 'rv-step';
+          if (uiPhase === s.num) cls += ' is-active active';
+          else if (uiPhase > s.num) cls += ' is-done done';
+          return `<span class="${cls}">${s.text}</span>`;
+        }).join('');
+      }
+
+      // Update Peer Synchronization Status Bar
+      const peerBar = this.root.querySelector('#rv-peer-status');
+      const doneKey = uiPhase === 1 ? 'p1Done' : uiPhase === 2 ? 'p2Done' : 'p3Done';
+      if (peerBar) {
+        peerBar.innerHTML = this.state.players.map(p => {
+          const clip = this.state.clips[p.id];
+          const isReady = uiPhase === 4 ? true : Boolean(clip && clip[doneKey]);
+          const isMe = p.id === this.ctx.myId;
+          let statusLabel = isReady ? 'Ready ✓' : 'Working...';
+          if (uiPhase !== 1 && uiPhase !== 4 && clip) {
+            if (clip.p3Done) statusLabel = 'Guessed ✓';
+            else if (clip.p2Done) statusLabel = 'Guessing...';
+            else statusLabel = 'Imitating...';
+          }
+          return `
+            <span class="rv-peer-pill ${isReady ? 'is-ready ready' : ''}">
+              <span class="rv-peer-dot"></span>
+              ${this._esc(p.name)}${isMe ? ' (You)' : ''}: ${statusLabel}
+            </span>
+          `;
+        }).join('');
+      }
+
+      // Show active phase panel and hide others
+      const p1Panel = this.root.querySelector('#rv-phase-1');
+      const p2Panel = this.root.querySelector('#rv-phase-2');
+      const p3Panel = this.root.querySelector('#rv-phase-3');
+      const p4Panel = this.root.querySelector('#rv-phase-4');
+
+      [p1Panel, p2Panel, p3Panel, p4Panel].forEach((panel, idx) => {
+        if (!panel) return;
+        const isCurrent = (idx + 1) === uiPhase;
+        panel.classList.toggle('hidden', !isCurrent);
+      });
+
+      const myId = this.ctx.myId;
+      const myClip = this.state.clips[myId] || {};
+      const hasDraft = Boolean(this.localDraftDataUrl);
+
+      if (uiPhase === 1) {
+        const recBtnP1 = this.root.querySelector('#rv-btn-rec-p1');
+        const previewBtnP1 = this.root.querySelector('#rv-btn-preview-p1');
+        const sendBtnP1 = this.root.querySelector('#rv-btn-send-p1');
+        const statusP1 = this.root.querySelector('#rv-status-p1');
+
+        if (recBtnP1 && !this.isRecording) {
+          recBtnP1.classList.remove('is-recording');
+          recBtnP1.disabled = Boolean(myClip.p1Done);
+          recBtnP1.textContent = hasDraft ? '🎙️ Re-Record Audio' : '🎙️ Start Recording';
+        }
+        if (previewBtnP1) {
+          previewBtnP1.disabled = !hasDraft;
+          previewBtnP1.textContent = hasDraft ? `▶ Play My Recording (${this.localDraftDuration}s)` : '▶ Play My Recording';
+        }
+        if (sendBtnP1) {
+          sendBtnP1.disabled = !hasDraft || Boolean(myClip.p1Done);
+          sendBtnP1.textContent = myClip.p1Done ? '✅ Sent! Waiting for Partner...' : '🚀 Send Audio to Partner';
+        }
+        if (statusP1 && !this.isRecording) {
+          if (myClip.p1Done) {
+            statusP1.textContent = '🔒 Secret audio locked in! Waiting for your partner to finish Phase 1...';
+          } else if (hasDraft) {
+            statusP1.textContent = `✅ Recorded clip ready (${this.localDraftDuration}s). Click "Send Audio to Partner"!`;
+          } else {
+            statusP1.textContent = 'Click "Start Recording" and speak clearly into your microphone.';
+          }
+        }
+      } else if (uiPhase === 2) {
+        const recBtnP2 = this.root.querySelector('#rv-btn-rec-p2');
+        const previewBtnP2 = this.root.querySelector('#rv-btn-preview-p2');
+        const sendBtnP2 = this.root.querySelector('#rv-btn-send-p2');
+        const statusP2 = this.root.querySelector('#rv-status-p2');
+
+        if (recBtnP2 && !this.isRecording) {
+          recBtnP2.classList.remove('is-recording');
+          recBtnP2.disabled = false;
+          recBtnP2.textContent = hasDraft ? '🎙️ Re-Record Imitation' : '🎙️ Record My Imitation';
+        }
+        if (previewBtnP2) {
+          previewBtnP2.disabled = !hasDraft;
+          previewBtnP2.textContent = hasDraft ? `▶ Preview My Imitation (${this.localDraftDuration}s)` : '▶ Preview My Imitation';
+        }
+        if (sendBtnP2) {
+          sendBtnP2.disabled = !hasDraft;
+          sendBtnP2.textContent = '➡️ Continue to Guess (Phase 3)';
+        }
+        if (statusP2 && !this.isRecording) {
+          if (hasDraft) {
+            statusP2.textContent = `✅ Imitation recorded (${this.localDraftDuration}s). Click "Continue to Guess (Phase 3)" to reverse your own imitation!`;
+          } else {
+            statusP2.textContent = 'Listen to the reversed audio first, then mimic the sounds!';
+          }
+        }
+      } else if (uiPhase === 3) {
+        const guessInput = this.root.querySelector('#rv-guess-input');
+        const sendBtnP3 = this.root.querySelector('#rv-btn-send-p3');
+        const statusP3 = this.root.querySelector('#rv-status-p3');
+
+        if (guessInput) guessInput.disabled = Boolean(myClip.p3Done);
+        if (sendBtnP3) {
+          sendBtnP3.disabled = Boolean(myClip.p3Done);
+          sendBtnP3.textContent = myClip.p3Done ? '✅ Guess Sent! Waiting for Partner...' : '✅ Submit Guess & Reveal';
+        }
+        if (statusP3) {
+          statusP3.textContent = myClip.p3Done
+            ? '🤔 Your guess and imitation were sent to your partner! Waiting for partner to finish...'
+            : 'Listen to your locally reversed imitation, then type your guess of your partner\'s original word!';
+        }
+      } else if (uiPhase === 4) {
+        const revealGrid = this.root.querySelector('#rv-reveal-grid');
+        if (revealGrid) {
+          const players = this.state.players;
+          revealGrid.innerHTML = players.map(speaker => {
+            const listener = players.find(p => p.id !== speaker.id) || speaker;
+            const speakerClip = this.state.clips[speaker.id] || {};
+            const listenerClip = this.state.clips[listener.id] || {};
+            const originalWord = speakerClip.word ? speakerClip.word : '(Secret Audio Clip)';
+            const listenerGuess = listenerClip.guess ? listenerClip.guess : '(No guess)';
+
+            return `
+              <div class="rv-reveal-card">
+                <h5 class="rv-reveal-player">🎤 ${this._esc(speaker.name)}'s Secret Word Chain</h5>
+                <div class="rv-reveal-pair">
+                  <div class="rv-reveal-box">
+                    <span class="rv-reveal-label">Original Word (${this._esc(speaker.name)})</span>
+                    <div class="rv-reveal-word">${this._esc(originalWord)}</div>
+                  </div>
+                  <div class="rv-reveal-box">
+                    <span class="rv-reveal-label">${this._esc(listener.name)}'s Guess (from own imitation)</span>
+                    <div class="rv-reveal-word rv-reveal-word--guess">${this._esc(listenerGuess)}</div>
+                  </div>
+                </div>
+                <div class="rv-playback-list">
+                  <button type="button" class="rv-btn rv-btn--play" data-rv-play="orig" data-speaker="${speaker.id}">
+                    ▶ 1. Original Audio (${this._esc(speaker.name)})
+                  </button>
+                  <button type="button" class="rv-btn rv-btn--play" data-rv-play="rev" data-speaker="${speaker.id}">
+                    ⏪ 2. Reversed Audio (Alien Prompt)
+                  </button>
+                  <button type="button" class="rv-btn rv-btn--play" data-rv-play="imit_raw" data-listener="${listener.id}">
+                    🎙️ 3. Imitation Audio (by ${this._esc(listener.name)})
+                  </button>
+                  <button type="button" class="rv-btn rv-btn--play" data-rv-play="imit_rev" data-listener="${listener.id}">
+                    🔁 4. Reversed Imitation (What ${this._esc(listener.name)} Guessed From)
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          revealGrid.querySelectorAll('[data-rv-play]').forEach(btn => {
+            btn.onclick = () => {
+              const mode = btn.getAttribute('data-rv-play');
+              if (mode === 'orig') {
+                const spkId = btn.getAttribute('data-speaker');
+                const clip = this.state.clips[spkId];
+                this._playAudioDataUrl(`orig_${spkId}_r${this.state.round}`, clip?.originalB64, false, btn);
+              } else if (mode === 'rev') {
+                const spkId = btn.getAttribute('data-speaker');
+                const clip = this.state.clips[spkId];
+                this._playAudioDataUrl(`orig_${spkId}_r${this.state.round}`, clip?.originalB64, true, btn);
+              } else if (mode === 'imit_raw') {
+                const lstId = btn.getAttribute('data-listener');
+                const clip = this.state.clips[lstId];
+                this._playAudioDataUrl(`imit_${lstId}_r${this.state.round}`, clip?.imitationB64, false, btn);
+              } else if (mode === 'imit_rev') {
+                const lstId = btn.getAttribute('data-listener');
+                const clip = this.state.clips[lstId];
+                this._playAudioDataUrl(`imit_${lstId}_r${this.state.round}`, clip?.imitationB64, true, btn);
+              }
+            };
+          });
+        }
+      }
+    },
+
+    _esc(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => (
+        { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+      ));
+    },
+
+    _escAttr(s) {
+      return this._esc(s);
+    }
+  };
+
+  GameHub.register(ReverseVoice);
 })();
